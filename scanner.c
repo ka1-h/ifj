@@ -23,6 +23,10 @@ void buffer_append(Buffer *buf, char c){
 }
 
 void buffer_clear(Buffer *buf){
+    if (buf->data != NULL)
+    {
+        buf->data[0] = '\0';
+    }
     buf->length = 0;
 }
 
@@ -45,47 +49,737 @@ bool is_keyword(Token *token){
     return found;
 }
 
-int get_token(FILE *src, Token *token){
+int get_token(FILE *src, Token *token, Buffer *buffer){
     token->type = T_EOF;
     token->data = NULL;
     token->line = line_now;
     State state = S_START;
-    Buffer buffer;
-    buffer_init(&buffer);
-    int c;
+    int c = -1, left = 0, right = 0;
+    bool exponent = false, has_d = false, has_end = false;
 
     while(1){
         c = fgetc(src);
+        printf("%c", c);
         switch (state){
             case S_START:
                 if(c == EOF){
                     token->type = T_EOF;
-                    buffer_free(&buffer);
+                    buffer_clear(buffer);
                     return 0;
                 }
+                //LF
                 if(c == 10){
                     line_now++;
                     token->type = T_LF;
                     token->line = line_now-1;
-                    buffer_free(&buffer);
+                    buffer_clear(buffer);
                     return 0;
                 }
-                if(isalpha(c) || c == '_'){
-                    buffer_append(&buffer, (char)c);
+                //TAB
+                if(c == 9){
+                    buffer_clear(buffer);
+                    return 1;
+                }
+                if(c == ' '){
+                    token->type = T_SPACE;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(isalpha(c)){
+                    buffer_append(buffer, (char)c);
                     state = S_ID;
                     break;
                 }
-                break;
+                if(c == '_'){
+                    buffer_append(buffer, (char)c);
+                    state = S_REPRESPATTERN;
+                    break;
+                }
+                if(isdigit(c)){
+                    if(c == '0'){
+                        buffer_append(buffer, (char)c);
+                        state = S_ZERO;
+                        break;
+                    }else{
+                        buffer_append(buffer, (char)c);
+                        state = S_INT;
+                        break;
+                    }
+                }
+                if(c == '-'){
+                    buffer_append(buffer, (char)c);
+                    state = S_MINUS;
+                    break;
+                }
+                if(c == '+'){
+                    buffer_append(buffer, (char)c);
+                    state = S_PLUS;
+                    break;
+                }
+                if(c == '.'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOT;
+                    break;
+                }
+                if(c == '"'){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR1;
+                    break;
+                }
+                if(c == '@'){
+                    buffer_append(buffer, (char)c);
+                    state = S_MAIN1;
+                    break;
+                }
+                buffer_clear(buffer);
+                if(c == '/'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DIV_COMMENT;
+                    break;
+                }
+                if(c == ';'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_SEMIC;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(c == ','){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_COMMA;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(c == '('){
+                    buffer_append(buffer, (char)c);
+                    state = S_LPARENTH;
+                    break;
+                }
+                if(c == ')'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_RPARENTH;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(c == '='){
+                    buffer_append(buffer, (char)c);
+                    state = S_EQU_SIGN;
+                    break;
+                }
+                if(c == '*'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_MULT;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(c == '<'){
+                    buffer_append(buffer, (char)c);
+                    state = S_LT;
+                    break;
+                }
+                if(c == '>'){
+                    buffer_append(buffer, (char)c);
+                    state = S_GT;
+                    break;
+                }
+                if(c == '!'){
+                    buffer_append(buffer, (char)c);
+                    state = S_NEG;
+                    break;
+                }
+                if(c == '&'){
+                    buffer_append(buffer, (char)c);
+                    state = S_AND;
+                    break;
+                }
+                if(c == '|'){
+                    buffer_append(buffer, (char)c);
+                    state = S_UNIF;
+                    break;
+                }
+                if(c == ':'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_COL;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+                if(c == '$'){
+                    buffer_append(buffer, (char)c);
+                    state = S_INTERP;
+                    break;
+                }
+                if(c == '\\'){
+                    buffer_append(buffer, (char)c);
+                    state = S_QUTMARKS;
+                    break;
+                }
+                buffer_clear(buffer);
+                return 1;
             case S_ID:
                 if(isalpha(c) || c == '_' || isdigit(c)){
-                    buffer_append(&buffer, (char)c);
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == '.' && strcmp(buffer->data,"ifj26") == 0){
+                    buffer_append(buffer, (char)c);
+                    state = S_IFJ;
+                    break;
                 }else{
                     ungetc(c, src);     //returning unused char back to entry
-                    token->data = strdup(buffer.data);
+                    token->data = strdup(buffer->data);
                     token->type = T_ID;
                     is_keyword(token);
-                    buffer_free(&buffer);
+                    buffer_clear(buffer);
                     return 0;
+                }
+            case S_REPRESPATTERN:
+                if(isalpha(c) || c == '_' || isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_ID;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_REPRESPATTERN;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_IFJ:
+                if(c == '*'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_IFJ;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    buffer_clear(buffer);
+                    return 2;
+                }
+            case S_ZERO:
+                if(isdigit(c)){
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_ZERO;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_INT:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == '_'){
+                    buffer_append(buffer, (char)c);
+                    state = S_INT_UNDER;
+                    break;
+                }else if(c == '.'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOT;
+                    break;
+                }else if(c == 'e' || c == 'E'){
+                    buffer_append(buffer, (char)c);
+                    state = S_EXP;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_INT;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_INT_UNDER:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_INT;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_MINUS:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_INT;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_MINUS;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_PLUS:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_INT;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_PLUS;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_DOT:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_DOT;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_EXP:
+                if(isdigit(c)){
+                    exponent = true;
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else if(c == '+' || c == '-'){
+                    buffer_append(buffer, (char)c);
+                    state = S_EXP_SIGN;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_EXP_SIGN:
+                if(isdigit(c)){
+                    exponent = true;
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_DOUBLE:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == 'e' || c == 'E'){
+                    if(!exponent){
+                        buffer_append(buffer, (char)c);
+                        state = S_EXP;
+                        break;
+                    }else{
+                        buffer_clear(buffer);
+                        return 1;
+                    }
+                }else if(c == 'd' || c == 'D'){
+                    if(!has_d){
+                        has_d = true;
+                        buffer_append(buffer, (char)c);
+                        break;
+                    }else{
+                        buffer_clear(buffer);
+                        return 1;
+                    }
+                }else if(c == '_'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE_UNDER;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_DOUBLE;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_DOUBLE_UNDER:
+                if(isdigit(c)){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_STR1:
+                if(c == '"'){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR;
+                    break;
+                }else if(c > 31 && (c != 34 && c != 92)){
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == '\\'){
+                    state = S_ESC_SEQ;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_ESC_SEQ:
+                if(c == '\\'){
+                    buffer_append(buffer, '\\');
+                }else if(c == '"'){
+                    buffer_append(buffer, '\"');
+                }else if(c == 'n'){
+                    buffer_append(buffer, '\n');
+                }else if(c == 'r'){
+                    buffer_append(buffer, '\r');
+                }else if(c == 't'){
+                    buffer_append(buffer, '\t');
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+                state = S_STR1;
+                break;
+            case S_STR:
+                if(c == '"' && strcmp(buffer->data,"\"\"") == 0){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR_MUL;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_STRING;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_STR_MUL:
+                if(c != 34){
+                    if(c == 10){
+                        line_now++;
+                    }
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == 34){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR_MUL1;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_STR_MUL1:
+                if(c == 34){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR_MUL2;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_STR_MUL2:
+                if(c == 34){
+                    buffer_append(buffer, (char)c);
+                    state = S_STR;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_MAIN1:
+                if(c == 'm'){
+                    buffer_append(buffer, (char)c);
+                    state = S_MAIN2;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_MAIN2:
+                if(c == 'a'){
+                    buffer_append(buffer, (char)c);
+                    state = S_MAIN3;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_MAIN3:
+                if(c == 'i'){
+                    buffer_append(buffer, (char)c);
+                    state = S_MAIN;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_MAIN:
+                if(c == 'n'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_MAIN;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_DIV_COMMENT:
+                if(c == '/'){
+                    buffer_append(buffer, (char)c);
+                    state = S_ROW_COM;
+                    break;
+                }else if(c == '*'){
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_DIV;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_ROW_COM:
+                if(c == 10 || c == EOF){
+                    ungetc(c, src);
+                    buffer_clear(buffer);
+                    state = S_START;
+                    break;
+                }else{
+                    buffer_append(buffer, (char)c);
+                    break;
+                }
+            case S_BLOCK_COM1:
+                if(c == 10){
+                    has_end = true;
+                    line_now++;
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == EOF){
+                    buffer_clear(buffer);
+                    return 1;
+                }else if(c == '/'){
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_NEST_B;
+                    break;
+                }else if(c == '*'){
+                    if(left != right){
+                        buffer_append(buffer, (char)c);
+                        state = S_BLOCK_NEST_E;
+                        break;
+                    }else{
+                        buffer_append(buffer, (char)c);
+                        state = S_BLOCK_COM2;
+                        break;
+                    }
+                }else{
+                    buffer_append(buffer, (char)c);
+                    break;
+                }
+            case S_BLOCK_NEST_B:
+                if(c == 10){
+                    has_end = true;
+                    line_now++;
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else if(c == EOF){
+                    buffer_clear(buffer);
+                    return 1;
+                }else if(c == '*'){
+                    left++;
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else{
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }
+            case S_BLOCK_NEST_E:
+                if(c == 10){
+                    has_end = true;
+                    line_now++;
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else if(c == EOF){
+                    buffer_clear(buffer);
+                    return 1;
+                }else if(c == '/'){
+                    right++;
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else{
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }
+            case S_BLOCK_COM2:
+                if(c == 10){
+                    has_end = true;
+                    line_now++;
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }else if(c == EOF){
+                    buffer_clear(buffer);
+                    return 1;
+                }else if(c == '/'){
+                    if(has_end){
+                        buffer_append(buffer, (char)c);
+                        state = S_BLOCK_WAIT_END;
+                        break;
+                    }else{
+                        buffer_append(buffer, (char)c);
+                        buffer_clear(buffer);
+                        token->type = T_SPACE;
+                        return 0;
+                    }
+                }else{
+                    buffer_append(buffer, (char)c);
+                    state = S_BLOCK_COM1;
+                    break;
+                }
+            case S_BLOCK_WAIT_END:
+                if(c == ' '){
+                    buffer_append(buffer, (char)c);
+                    break;
+                }else if(c == 10 || c == EOF){
+                    ungetc(c, src);
+                    buffer_clear(buffer);
+                    state = S_START;
+                    break;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_LPARENTH:
+                if(c == ')'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_UNIT_BRACKETS;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_LPARENTH;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_EQU_SIGN:
+                if(c == '='){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_ET;
+                    buffer_clear(buffer);
+                    return 0;
+                }else if(c == '>'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_LAMB;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_EQU_SIGN;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_LT:
+                if(c == '='){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_LOET;
+                    buffer_clear(buffer);
+                    return 0;
+                }else if(c == '-'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_ASSIG;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_LT;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_GT:
+                if(c == '='){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_GOET;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_GT;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_NEG:
+                if(c == '='){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_NET;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_NEG;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_AND:
+                if(c == '&'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_NET;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
+                }
+            case S_UNIF:
+                if(c == '|'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_OR;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_UNIF;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_INTERP:
+                if(c == '$'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_DOLLAR;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    ungetc(c, src);
+                    token->data = strdup(buffer->data);
+                    token->type = T_INTERP;
+                    buffer_clear(buffer);
+                    return 0;
+                }
+            case S_QUTMARKS:
+                if(c == '"'){
+                    buffer_append(buffer, (char)c);
+                    token->data = strdup(buffer->data);
+                    token->type = T_QUTMARKS;
+                    buffer_clear(buffer);
+                    return 0;
+                }else{
+                    buffer_clear(buffer);
+                    return 1;
                 }
             break;
         }
