@@ -38,17 +38,18 @@ typedef enum{
     T_DOUBLE,   //double
     T_STRING,   //string
 
-    T_SPACE,    //biely znak
-    T_LF,       //koniec riadku
-    T_EOF,      //koniec suboru
-    T_IFJ,      //ifj26,*
-    T_MAIN,     //@main
+    T_UNIT_BRACKETS,// ()
+    T_SPACE,        //biely znak
+    T_LF,           //koniec riadku
+    T_EOF,          //koniec suboru
+    T_IFJ,          //ifj26.*
+    T_MAIN,         //@main
 
     T_SEMIC,    //  ;
     T_COMMA,    //  ,
     T_LPARENTH, //  (
     T_RPARENTH, //  )
-    T_ASSIGN,   //  =
+    T_EQU_SIGN, //  =
     T_PLUS,     //  +
     T_MINUS,    //  -
     T_MULT,     //  *
@@ -135,6 +136,44 @@ typedef struct{
 typedef enum{
     S_START,
     S_ID,
+    S_REPRESPATTERN,
+    S_IFJ,
+    S_ZERO,
+    S_INT,
+    S_INT_UNDER,
+    S_PLUS,
+    S_MINUS,
+    S_DOT,
+    S_EXP,
+    S_EXP_SIGN,
+    S_DOUBLE,
+    S_DOUBLE_UNDER,
+    S_STR1,
+    S_ESC_SEQ,
+    S_STR,
+    S_STR_MUL,
+    S_STR_MUL1,
+    S_STR_MUL2,
+    S_MAIN1,
+    S_MAIN2,
+    S_MAIN3,
+    S_MAIN,
+    S_DIV_COMMENT,
+    S_ROW_COM,
+    S_BLOCK_COM1,
+    S_BLOCK_COM2,
+    S_BLOCK_NEST_B,
+    S_BLOCK_NEST_E,
+    S_BLOCK_WAIT_END,
+    S_LPARENTH,
+    S_EQU_SIGN,
+    S_LT,
+    S_GT,
+    S_NEG,
+    S_AND,
+    S_UNIF,
+    S_INTERP,
+    S_QUTMARKS,
 }State;
 
 void buffer_init(Buffer *buf);
@@ -142,6 +181,6 @@ void buffer_append(Buffer *buf, char c);
 void buffer_clear(Buffer *buf);
 void buffer_free(Buffer *buf);
 bool is_keyword(Token *token);
-int get_token(FILE *src, Token *token);
+int get_token(FILE *src, Token *token, Buffer *buffer);
 
 #endif
