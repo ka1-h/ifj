@@ -3,7 +3,9 @@
 #include "scanner.h"
 
 int main(int argc, char *argv[]){
-    int result = 0;
+    int result = 0, dent = 0, pos = 0;
+    int pole_dent[256] = {0};
+    bool processed = true, mul_de = false;
     FILE *src, *dst;
     Token t;
     Buffer buff;
@@ -28,7 +30,7 @@ int main(int argc, char *argv[]){
 
     buffer_init(&buff);
     while(t.type != T_EOF){
-        result = get_token(src, &t, &buff);
+        result = get_token(src, &t, &buff, &dent, &processed, &pos, pole_dent, &mul_de);
         if(result == 1){
             fprintf(stderr, "Lexer stderr\n");
             break;
