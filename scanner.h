@@ -34,7 +34,6 @@ typedef enum{
     KW_TYPE,
 
     T_INT,      //int
-    T_ZERO,     // 0
     T_DOUBLE,   //double
     T_STRING,   //string
 
@@ -86,6 +85,9 @@ typedef enum{
 
     //LAMBDAS
     T_LAMB, //  =>
+
+    T_INDENT, //61
+    T_DEDENT, //62
 }t_type;
 
 typedef struct{
@@ -139,6 +141,7 @@ typedef enum{
     S_REPRESPATTERN,
     S_IFJ,
     S_ZERO,
+    S_ZERO_UNDER,
     S_INT,
     S_INT_UNDER,
     S_PLUS,
@@ -174,6 +177,7 @@ typedef enum{
     S_UNIF,
     S_INTERP,
     S_QUTMARKS,
+    S_LF,
 }State;
 
 void buffer_init(Buffer *buf);
@@ -181,6 +185,7 @@ void buffer_append(Buffer *buf, char c);
 void buffer_clear(Buffer *buf);
 void buffer_free(Buffer *buf);
 bool is_keyword(Token *token);
-int get_token(FILE *src, Token *token, Buffer *buffer);
+int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processed, int *pos, int pole_dent[], bool *mul_de);
+int what_dent(int dent, int *pos, int pole_dent[]);
 
 #endif
