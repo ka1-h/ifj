@@ -6,26 +6,16 @@ int main(int argc, char *argv[]){
     int result = 0, dent = 0, pos = 0;
     int pole_dent[256] = {0};
     bool processed = true, mul_de = false;
-    FILE *src, *dst;
+    FILE *src = stdin;
     Token t;
     Buffer buff;
 
-    if (argc < 3) {
-        perror("malo argumentov\n");
-        return 1;
-    }
-
-    src = fopen(argv[1], "r");
-    if(src == NULL){
-        perror("subor1\n");
-        return 1;
-    }
-
-    dst = fopen(argv[2], "w");
-    if(dst == NULL){
-        perror("subor2\n");
-        fclose(src);
-        return 1;
+    if(argc > 1){
+        src = fopen(argv[1], "r");
+        if (src == NULL) {
+            fprintf(stderr, "File opening error\n");
+            return 60;
+        }
     }
 
     buffer_init(&buff);
@@ -33,13 +23,14 @@ int main(int argc, char *argv[]){
         result = get_token(src, &t, &buff, &dent, &processed, &pos, pole_dent, &mul_de);
         if(result == 1){
             fprintf(stderr, "Lexer stderr\n");
+            if (t.data != NULL) {
+                free(t.data);
+                t.data = NULL;
+            }
             break;
         }
-        if(result != 1 && result != 0){
-            printf("v lexe mas zly vypis\n");
-            break;
-        }
-        fprintf(dst,"Token: type = %d, line = %d and data = %s\n", t.type, t.line, t.data ? t.data : "NULL");
+        // FOR TESTING LEXER
+        printf("Token: type = %d, line = %d and data = %s\n", t.type, t.line, t.data ? t.data : "NULL");
         if (t.data != NULL){
             free(t.data);
             t.data = NULL;
@@ -47,7 +38,8 @@ int main(int argc, char *argv[]){
     }
 
     buffer_free(&buff);
-    fclose(src);
-    fclose(dst);
+    if(src != stdin){
+        fclose(src);
+    }
     return result;
 }

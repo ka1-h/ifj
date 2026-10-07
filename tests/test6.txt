@@ -1,0 +1,22 @@
+import ifj26.*
+
+@main def testBuiltins(): Unit =
+print("Zadejte cele cislo: ")
+val i = readInt()
+print("Zadejte desetinne cislo: ")
+val d = readDouble()
+
+val dFromI: Double = i // Implicitni konverze Int -> Double
+val iFromD: Int = toInt(d) // Explicitni konverze pomoci toInt
+
+print("Int jako Double: ")
+print(dFromI)
+print("\n")
+
+print("Double osekany na Int: ")
+print(iFromD)
+print("\n")
+
+val strI = toStr(i)
+val strD = toStr(d)
+print("Konverze na String: " + strI + " a " + strD + "\n")

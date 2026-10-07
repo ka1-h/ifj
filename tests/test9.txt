@@ -1,0 +1,36 @@
+import ifj26.*
+
+// Funkce vracejici Int bez pouziti klicoveho slova return
+def max(a: Int, b: Int): Int =
+if a > b then
+a
+else
+b
+
+// Jednoradkova funkce
+def square(x: Int): Int = x * x
+
+// Funkce vracejici Unit, kde je return pouzit pro predcasne ukonceni
+def checkPositive(n: Int): Unit =
+if n <= 0 then
+print("Cislo neni kladne\n")
+return
+else
+()
+print("Cislo je kladne: ")
+print(n)
+print("\n")
+
+@main def runImplicitReturns(): Unit =
+val m = max(15, 27)
+print("Max z 15 a 27 je: ")
+print(m)
+print("\n")
+
+val sq = square(m)
+print("Mocnina je: ")
+print(sq)
+print("\n")
+
+checkPositive(-5)
+checkPositive(10)

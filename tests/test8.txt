@@ -1,0 +1,37 @@
+import ifj26.*
+
+@main def testScope(): Unit =
+val x = 100
+var y = 50
+
+print("Outer x: ")
+print(x)
+print("\n")
+
+if x > 50 then
+    val x = 10 // Shadowing promenne x ve vnitrnim bloku
+    var y = 20 // Shadowing promenne y ve vnitrnim bloku
+    print("Inner x (shadowed): ")
+    print(x)
+    print("\n")
+    print("Inner y (shadowed): ")
+    print(y)
+    print("\n")
+else
+    ()
+
+print("Outer x after block: ")
+print(x)
+print("\n")
+
+var i = 0
+while i < 1 do
+    val x = 999 // Dalsi shadowing uvnitr while
+    print("While x: ")
+    print(x)
+    print("\n")
+    i = i + 1
+
+print("Outer y after block: ")
+print(y)
+print("\n")

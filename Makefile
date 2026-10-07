@@ -16,5 +16,12 @@ main.o: main.c scanner.h
 scanner.o: scanner.c scanner.h
 	$(CC) $(CFLAGS) -c scanner.c
 
+lex_test: $(TARGET)
+	cd test_skripts && ./lex_test.sh
+
+test: lex_test
+
 clean:
 	rm -f $(OBJS) $(TARGET)
+
+.PHONY: all clean lex_test test

@@ -1,0 +1,28 @@
+import ifj26.*
+
+// Eukliduv algoritmus pro nejvetsi spolecny delitel (GCD)
+def gcd(a: Int, b: Int): Int =
+if b == 0 then
+a
+else
+gcd(b, a - (a / b) * b)
+
+// Rekurzivni mocninovani
+def power(base: Int, exp: Int): Int =
+if exp == 0 then
+1
+else if exp == 1 then
+base
+else
+base * power(base, exp - 1)
+
+@main def runAlgorithms(): Unit =
+val g = gcd(48, 18)
+print("GCD(48, 18) = ")
+print(g)
+print("\n")
+
+val p = power(2, 10)
+print("2^10 = ")
+print(p)
+print("\n")

@@ -1,0 +1,25 @@
+import ifj26.*
+
+def isEven(n: Int): Boolean =
+val div = n / 2
+n == div * 2
+
+def addBonus(val1: Int, val2: Int): Int =
+val1 + val2 + 5
+
+@main def runFunexpBool(): Unit =
+val flag: Boolean = true
+val cond = !flag || isEven(10) && true
+
+if cond then
+    // FUNEXP: Vlozeni volani funkcii priamo do vyrazov a argumentov
+    val res = addBonus(strLength("hello"), 10) * 2
+    print("Vysledek s FUNEXP: ")
+    print(res)
+    print("\n")
+else if !cond then
+    print("Unreachable\n")
+
+// BOOLTHEN: Skratene if bez povinneno else
+if isEven(4) then
+    print("4 je sude cislo\n")
