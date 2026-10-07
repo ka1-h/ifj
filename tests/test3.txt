@@ -1,0 +1,15 @@
+import ifj26.*
+
+@main def testIf(): Unit =
+val a = 15
+val b = 20
+
+if a < b then
+    print("a je mensi nez b\n")
+else
+    print("a je vetsi nebo rovno b\n")
+
+if a == 15 then
+    print("a je přesne 15\n")
+else
+    ()

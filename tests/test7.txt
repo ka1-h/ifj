@@ -1,0 +1,32 @@
+import ifj26.*
+
+def reverseString(str: String): String =
+var res = ""
+var idx = strLength(str) - 1
+while idx >= 0 do
+val asciiCode = ord(str, idx)
+val charStr = chr(asciiCode)
+res = res + charStr
+idx = idx - 1
+res
+
+@main def runStringTest(): Unit =
+val text = "Ahoj Svet"
+val len = strLength(text)
+print("Delka textu: ")
+print(len)
+print("\n")
+
+val sub = subStr(text, 0, 4)
+print("Podretezec (0..4): " + sub + "\n")
+
+val reversed = reverseString(sub)
+print("Obraceny podretezec: " + reversed + "\n")
+
+val multiline = """Radek 1
+
+
+Radek 2"""
+print("Viceradkovy retezcovy literal:\n")
+print(multiline)
+print("\n")

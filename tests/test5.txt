@@ -1,0 +1,22 @@
+import ifj26.*
+
+// Funkce s explicitním návratovým typem kvůli rekurzi
+def recursiveSum(n: Int): Int =
+if n <= 0 then
+    0
+else
+    n + recursiveSum(n - 1)
+
+// Jednořádková funkce
+def add(a: Int, b: Int): Int = a + b
+
+@main def start(): Unit =
+val sum = recursiveSum(5)
+val addition = add(sum, 10)
+
+print("Vysledek rekurze (sum 1..5): ")
+print(sum)
+print("\n")
+print("Vysledek po pripocteni 10: ")
+print(addition)
+print("\n")

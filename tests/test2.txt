@@ -1,0 +1,18 @@
+import ifj26.*
+
+@main def main(): Unit =
+// Test nemodifikovatelné (val) a modifikovatelné (var) proměnné
+val x = 10
+var y: Int = 20
+y = y + x
+// Implicitní konverze Int -> Double
+val d1: Double = 3.14
+val d2: Double = x + d1
+
+print("x = ")
+print(x)
+print(", y = ")
+print(y)
+print(", d2 = ")
+print(d2)
+print("\n")

@@ -1,0 +1,51 @@
+import ifj26.*
+
+// Test rozšírenia ALGEBDT (Algebraické dátové typy)
+type Scalar = Int | Double | String
+
+case class Point(x: Int, y: Int)
+
+def describeValue(valIn: Scalar): String =
+  valIn match
+    case 0 => "Zero integer"
+    case n: Int if n > 0 => "Positive integer"
+    case n: Int => "Negative integer"
+    case d: Double => "Double value"
+    case s: String => "String value"
+    case _ => "Unknown"
+
+def processPoint(pt: Point): Unit =
+  pt match
+    case Point(0, 0) =>
+      print("Origin point (0, 0)\n")
+    case Point(a, b) if a == b =>
+      print("Diagonal point: ")
+      print(a)
+      print("\n")
+    case Point(a, b) =>
+      print("Point at x=")
+      print(a)
+      print(", y=")
+      print(b)
+      print("\n")
+
+@main def runTest14(): Unit =
+  var item: Scalar = 42
+  print(describeValue(item))
+  print("\n")
+
+  item = -10
+  print(describeValue(item))
+  print("\n")
+
+  item = "Hello Match"
+  print(describeValue(item))
+  print("\n")
+
+  val p1 = Point(0, 0)
+  val p2 = Point(5, 5)
+  val p3 = Point(10, 20)
+
+  processPoint(p1)
+  processPoint(p2)
+  processPoint(p3)
