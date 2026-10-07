@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define TABLE_SIZE 97
+
 // Datove typy IFJ26 
 typedef enum {
     TYPE_UNDEF,     
@@ -51,9 +53,9 @@ typedef struct {
     size_t count;        
 } SymTable;
 
-size_t hash_djb2(const char *str);
+unsigned long hash_djb2(const char *str);
 
-bool symtable_init(SymTable *t, size_t initial_size);
+bool symtable_init(SymTable *t);
 void symtable_free(SymTable *t);
 Symbol *symtable_insert(SymTable *t, const char *key);   // NULL ak uz existuje alebo chyba alokacie 
 Symbol *symtable_lookup(const SymTable *t, const char *key);
