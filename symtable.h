@@ -4,7 +4,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "scanner.h"
+
 #define TABLE_SIZE 97
+
+#define RET_ERR 0
+#define RET_OK 1
+#define RET_DUPLICATE 2
 
 // Datove typy IFJ26 
 typedef enum {
@@ -53,11 +59,12 @@ typedef struct {
     size_t count;        
 } SymTable;
 
-unsigned long hash_djb2(const char *str);
+unsigned long hash_djb2(const unsigned char *str);
 
 bool symtable_init(SymTable *t);
 void symtable_free(SymTable *t);
-Symbol *symtable_insert(SymTable *t, const char *key);   // NULL ak uz existuje alebo chyba alokacie 
+static bool symtable_resize(SymTable *t, size_t new_size);
+int symtable_insert(SymTable *t, const char *key);   // NULL ak uz existuje alebo chyba alokacie 
 Symbol *symtable_lookup(const SymTable *t, const char *key);
 
 #endif 
