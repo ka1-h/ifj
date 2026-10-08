@@ -1,0 +1,40 @@
+import ifj26.*
+
+@main def runTest13(): Unit =
+  // Test rozšírenia VALMEM (členy hodnôt / tečková notácia)
+  val str = "Hello IFJ26"
+  val len = str.length
+  print("Dlzka retazca: ")
+  print(len)
+  print("\n")
+
+  val dbl = -12.75
+  val flr = dbl.floor
+  val num = flr.toInt
+  print("Floor a toInt: ")
+  print(flr)
+  print(" -> ")
+  print(num)
+  print("\n")
+
+  // Řetězení členů (VALMEM)
+  val chained = (-5.85).floor.toInt.toString
+  print("Chained call: ")
+  print(chained)
+  print("\n")
+
+  // Test rozšírenia INTERPOLATEDS (interpolované reťazce)
+  val name = "Compiler"
+  val ver = 26
+  val price = 50
+
+  val msg1 = s"Project $name version ${ver + 1} costs $$ $price"
+  print(msg1)
+  print("\n")
+
+  val multiline = s"""Infoline:
+Name: $name
+Version: $ver
+Price: $$ $price"""
+  print(multiline)
+  print("\n")

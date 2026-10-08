@@ -1,0 +1,51 @@
+import ifj26.*
+
+// Test rozšírenia PARAMLISTS (funkcia s viacerymi zoznamami parametrov)
+def multiplyAndAdd(factor: Int)(base: Int)(offset: Int): Int =
+  factor * base + offset
+
+// Funkcia bez zoznamu parametrov
+def getSecretCode: Int =
+  1024
+
+// Test rozšírenia LAMBDAS (funkcia vyššieho rádu)
+def applyOp(x: Int, y: Int, op: (Int, Int) => Int): Int =
+  op(x, y)
+
+def executeTwice(valIn: Int, f: (Int) => Int): Int =
+  f(f(valIn))
+
+@main def runTest15(): Unit =
+  // 1. Volanie funkcie bez zoznamu parametrov
+  val code = getSecretCode
+  print("Secret code: ")
+  print(code)
+  print("\n")
+
+  // 2. Volanie funkcie s viacerymi zoznamami parametrov (PARAMLISTS)
+  val res1 = multiplyAndAdd(3)(5)(10)
+  print("Result (3 * 5 + 10): ")
+  print(res1)
+  print("\n")
+
+  // 3. Lambda funkcie (LAMBDAS) uložené v premenných
+  val adder: (Int, Int) => Int = (a: Int, b: Int) => a + b
+  val multiplier: (Int, Int) => Int = (a: Int, b: Int) => a * b
+  val doubleVal: (Int) => Int = (v: Int) => v * 2
+
+  // 4. Odovzdávanie lambda funkcií do funkcií vyššieho rádu
+  val sumResult = applyOp(12, 8, adder)
+  print("Sum (12 + 8): ")
+  print(sumResult)
+  print("\n")
+
+  val prodResult = applyOp(6, 7, multiplier)
+  print("Product (6 * 7): ")
+  print(prodResult)
+  print("\n")
+
+  // 5. Opakovaná aplikácia lambdy
+  val twiceResult = executeTwice(5, doubleVal)
+  print("Twice doubled (5 * 2 * 2): ")
+  print(twiceResult)
+  print("\n")

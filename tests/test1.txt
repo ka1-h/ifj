@@ -1,0 +1,8 @@
+import ifj26.*
+
+@main def run(): Unit =
+print("Hello, IFJ26!\n")
+val number: Int = 42
+print("Cislo je: ")
+print(number)
+print("\n")
