@@ -26,7 +26,7 @@ typedef enum {
 typedef enum {
     SLOT_EMPTY,
     SLOT_OCCUPIED
-} State;
+} SlotState;
 
 typedef enum {
     SYM_VAR,
@@ -47,7 +47,7 @@ typedef struct {
 // Jedna polozka tabulky 
 typedef struct {
     char *key;
-    State state;
+    SlotState state;
     IdentifType type;
     VarData var;
     FuncData func;
@@ -59,7 +59,7 @@ typedef struct {
     size_t count;        
 } SymTable;
 
-unsigned long hash_djb2(const unsigned char *str);
+unsigned long hash_djb2(const char *str);
 
 bool symtable_init(SymTable *t);
 void symtable_free(SymTable *t);
