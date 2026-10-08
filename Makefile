@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c11 -g
 
-OBJS = main.o scanner.o
+OBJS = main.o scanner.o symtable.o
 
 TARGET = ifj
 
@@ -15,6 +15,9 @@ main.o: main.c scanner.h
 
 scanner.o: scanner.c scanner.h
 	$(CC) $(CFLAGS) -c scanner.c
+
+symtable.o: symtable.c symtable.h scanner.h
+	$(CC) $(CFLAGS) -c symtable.c
 
 lex_test: $(TARGET)
 	cd test_skripts && ./lex_test.sh
