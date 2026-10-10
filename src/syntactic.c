@@ -4,6 +4,157 @@
 #include "syntactic.h"
 #include "tree.h"
 
+void handle_tokens(Parser *p){
+    rule_program(p);
+}
+
+static void rule_program(Parser *p){
+
+    rule_prolog(p);
+    if (p->error != 0) return;
+
+    rule_top_list(p);
+    if (p->error != 0) return;
+
+    rule_EOF(p);
+    if (p->error != 0) return;
+}
+
+static void rule_prolog(Parser *p){
+    if (!parser_expect(p, KW_IMPORT, NULL)) return;
+    if (!parser_expect(p, T_IFJ, NULL)) return;
+    if (!parser_expect(p, T_LF, NULL)) return;
+}
+
+static void rule_top_list(Parser *p){
+    if(first_top_item(p)){
+        rule_top_item(p);
+        rule_top_list(p);
+    }
+}
+
+static void rule_top_item(Parser *p){
+    Token t = *parser_peek(p);
+    if(t.type == T_MAIN){
+    }else if(t.type == KW_DEF){
+    }else if(t.type == KW_CLASS){
+    }else if(t.type == KW_EXTENSION){
+    }
+}
+
+static bool first_top_item(const Parser *p) {
+    return parser_check(p, T_MAIN)   ||
+            parser_check(p, KW_DEF)   ||
+            parser_check(p, KW_TYPE)  ||
+            parser_check(p, KW_CASE)  ||
+            parser_check(p, KW_EXTENSION);
+}
+
+static void rule_function_def(Parser *p){
+    if (!parser_expect(p, KW_DEF, NULL)) return;
+    if (!parser_expect(p, T_ID, NULL)) return;
+
+    rule_param_lists(p);
+    rule_optional_type(p);
+    
+    if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
+    rule_rhs(p);
+}
+
+static void rule_type_def(Parser *p){
+    if (!parser_expect(p, KW_TYPE, NULL)) return;
+    if (!parser_expect(p, T_ID, NULL)) return;
+    if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
+
+    rule_type(p);
+}
+
+static void rule_type(Parser *p){
+    if(first_simple_type(p)){
+        rule_simple_type(p);
+        rule_union_rest(p);
+    }else{
+        parser_expect(p, T_LPARENTH, NULL);
+        rule_func_type_params(p);
+        parser_expect(p, T_RPARENTH, NULL);
+        parser_expect(p, T_GOET, NULL);
+        rule_type(p);
+    }
+}
+
+static bool first_simple_type(Parser *p){
+    if(parser_check(p, KW_BOOLEAN) ||
+        parser_check(p, KW_INT) ||
+        parser_check(p, KW_STRING) ||
+        parser_check(p, KW_DOUBLE) ||
+        parser_check(p, KW_UNIT) ||
+        parser_check(p, T_ID)){
+            return true;
+        }
+    return false;
+}
+
+static void rule_union_rest(Parser *p){
+    if (parser_check(p, T_UNIF)){
+        parser_expect(p, T_UNIF, NULL);
+        rule_simple_type(p);
+        rule_union_rest(p);
+    }
+}
+
+static void rule_simple_type(Parser *p){
+    if (parser_check(p, KW_BOOLEAN)) {
+        parser_expect(p, KW_BOOLEAN, NULL);
+        return;
+    }
+    if (parser_check(p, KW_INT)) {
+        parser_expect(p, KW_INT, NULL);
+        return;
+    }
+    if (parser_check(p, KW_STRING)) {
+        parser_expect(p, KW_STRING, NULL);
+        return;
+    }
+    if (parser_check(p, KW_DOUBLE)) {
+        parser_expect(p, KW_DOUBLE, NULL);
+        return;
+    }
+    if (parser_check(p, KW_UNIT)) {
+        parser_expect(p, KW_UNIT, NULL);
+        return;
+    }
+    parser_expect(p, T_ID, NULL);
+}
+
+static void rule_eol(Parser *p){
+
+}
+
+static void rule_case_class_def(Parser *p){
+
+}
+
+static void rule_extension_def(Parser *p){
+
+}
+
+static void rule_annotation_eol(Parser *p){
+
+}
+
+static void rule_param_lists(Parser *p){
+
+}
+
+static void rule_optional_type(Parser *p){
+
+}
+
+static void rule_rhs(Parser *p){
+
+}
+
+
 // Reads the next token that is not whitespace into p->current
 static bool fetch_token(Parser *p) {
     do {

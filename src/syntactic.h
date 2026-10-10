@@ -28,6 +28,12 @@ typedef struct {
     int error;          // PARSE_OK until something fails; first error sticks
 } Parser;
 
+void handle_tokens(Parser *p);
+void rule_program(Parser *p);
+void rule_prolog(Parser *p);
+void rule_top_list(Parser *p);
+void rule_top_item(Parser *p);
+void rule_EOF(Parser *p);
 bool parser_init(Parser *p, FILE *src);
 void parser_free(Parser *p);
 const Token *parser_peek(const Parser *p);

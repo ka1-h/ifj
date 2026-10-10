@@ -22,6 +22,9 @@ int main(int argc, char *argv[]){
 
     // SA starts here
 
+    handle_tokens(&parser);
+
+
     int result = parser.error;
     parser_free(&parser);
     if(src != stdin){
