@@ -1,14 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "scanner.h"
+#include "syntactic.h"
 
 int main(int argc, char *argv[]){
-    int result = 0, dent = 0, pos = 0;
-    int pole_dent[256] = {0};
-    bool processed = true, mul_de = false;
     FILE *src = stdin;
-    Token t;
-    Buffer buff;
+    Parser parser;
 
     if(argc > 1){
         src = fopen(argv[1], "r");
@@ -18,26 +15,15 @@ int main(int argc, char *argv[]){
         }
     }
 
-    buffer_init(&buff);
-    while(t.type != T_EOF){
-        result = get_token(src, &t, &buff, &dent, &processed, &pos, pole_dent, &mul_de);
-        if(result == 1){
-            fprintf(stderr, "Lexer stderr\n");
-            if (t.data != NULL) {
-                free(t.data);
-                t.data = NULL;
-            }
-            break;
-        }
-        // FOR TESTING LEXER
-        printf("Token: type = %d, line = %d and data = %s\n", t.type, t.line, t.data ? t.data : "NULL");
-        if (t.data != NULL){
-            free(t.data);
-            t.data = NULL;
-        }
+    // reads the first token; the parser then holds it as lookahead for SA
+    if(!parser_init(&parser, src)){
+        fprintf(stderr, "Lexer stderr\n");
     }
 
-    buffer_free(&buff);
+    // SA starts here
+
+    int result = parser.error;
+    parser_free(&parser);
     if(src != stdin){
         fclose(src);
     }

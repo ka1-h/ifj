@@ -49,3 +49,49 @@ void parser_free(Parser *p) {
     buffer_free(&p->buffer);
 }
 
+
+const Token *parser_peek(const Parser *p) {
+    return &p->current;
+}
+
+bool parser_check(const Parser *p, t_type type) {
+    return p->current.type == type;
+}
+
+bool parser_advance(Parser *p) {
+    if (p->error != PARSE_OK) {
+        return false;
+    }
+    if (p->current.type == T_EOF) {
+        return true;    
+    }
+    free(p->current.data);
+    p->current.data = NULL;
+    return fetch_token(p);
+}
+
+bool parser_expect(Parser *p, t_type type, tree_node_t **out) {
+    if (p->error != PARSE_OK) {
+        return false;
+    }
+    if (p->current.type != type) {
+        p->error = PARSE_ERR_SYNTAX;
+        return false;
+    }
+
+    if (out) {
+        *out = tree_create_terminal(&p->current);
+        if (!*out) {
+            p->error = PARSE_ERR_INTERNAL;
+            return false;
+        }
+    }
+
+    if (!parser_advance(p)) {
+        if (out) {
+            tree_dispose(out);
+        }
+        return false;
+    }
+    return true;
+}
