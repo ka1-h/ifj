@@ -16,14 +16,13 @@ static void rule_program(Parser *p){
     rule_top_list(p);
     if (p->error != 0) return;
 
-    rule_EOF(p);
-    if (p->error != 0) return;
+    parser_expect(p, T_EOF, NULL);
 }
 
 static void rule_prolog(Parser *p){
     if (!parser_expect(p, KW_IMPORT, NULL)) return;
     if (!parser_expect(p, T_IFJ, NULL)) return;
-    if (!parser_expect(p, T_LF, NULL)) return;
+    parser_expect(p, T_LF, NULL);
 }
 
 static void rule_top_list(Parser *p){
@@ -67,6 +66,7 @@ static void rule_type_def(Parser *p){
     if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
 
     rule_type(p);
+    parser_expect(p, T_LF, NULL);
 }
 
 static void rule_type(Parser *p){
@@ -80,6 +80,11 @@ static void rule_type(Parser *p){
         parser_expect(p, T_GOET, NULL);
         rule_type(p);
     }
+}
+
+static bool first_type(Parser *p){
+    if (first_simple_type(p) || parser_check(p, T_LPARENTH)) return true;
+    return false;
 }
 
 static bool first_simple_type(Parser *p){
@@ -126,32 +131,210 @@ static void rule_simple_type(Parser *p){
     parser_expect(p, T_ID, NULL);
 }
 
-static void rule_eol(Parser *p){
-
-}
 
 static void rule_case_class_def(Parser *p){
-
+    parser_expect(p, KW_CASE, NULL);
+    parser_expect(p, KW_CLASS, NULL);
+    parser_expect(p, T_ID, NULL);
+    parser_expect(p, T_LPARENTH, NULL);
+    rule_param_list(p);
+    parser_expect(p, T_RPARENTH, NULL);
+    parser_expect(p, T_LF, NULL);
 }
 
 static void rule_extension_def(Parser *p){
+    parser_expect(p, KW_EXTENSION, NULL);
+    parser_expect(p, T_LPARENTH, NULL);
+    rule_param(p);
+    parser_expect(p, T_RPARENTH, NULL);
+    parser_expect(p, T_INDENT, NULL);
+    rule_method_list(p);
+}
 
+static void rule_method_list(Parser *p){
+    rule_function_def(p);
+    rule_method_list_rest(p);
+}
+
+static void rule_method_list_rest(Parser *p){
+    if(parser_check(p, KW_DEF)){
+        rule_function_def(p);
+        rule_method_list_rest(p);
+    }
 }
 
 static void rule_annotation_eol(Parser *p){
-
+    if(parser_check(p, T_LF)) parser_expect(p, T_LF, NULL);
 }
 
 static void rule_param_lists(Parser *p){
+    if(parser_check(p, T_LPARENTH)){
+        parser_expect(p, T_LPARENTH, NULL);
+        rule_param_list(p);
+        parser_expect(p, T_RPARENTH, NULL);
+        rule_param_lists(p);
+    }
+}
 
+static void rule_param(Parser *p){
+    if(!parser_expect(p, T_ID, NULL)) return;
+    if(!parser_expect(p, T_COL, NULL)) return;
+    rule_type(p);
+}
+
+static void rule_param_list(Parser *p){
+    if(parser_check(p, T_ID)){
+        rule_param(p);
+        rule_param_list_rest(p);
+    }
+}
+
+static void rule_param_list_rest(Parser *p){
+    if(parser_check(p, T_COMMA)){
+        parser_expect(p, T_COMMA, NULL);
+        rule_param_list(p);
+    }
 }
 
 static void rule_optional_type(Parser *p){
+    if(parser_check(p, T_COL)){
+        parser_expect(p, T_COL, NULL);
+        rule_type(p);
+    }
+}
 
+static void rule_func_type_params(Parser *p){
+    if(first_type(p)){
+        rule_type(p);
+        rule_func_type_rest(p);
+    }
+}
+
+static void rule_func_type_rest(Parser *p){
+    if(parser_check(p, T_COMMA)){
+        parser_expect(p, T_COMMA, NULL);
+        rule_func_type_rest(p);
+    }
 }
 
 static void rule_rhs(Parser *p){
+    if(parser_check(p, T_LF)){
+        rule_block(p);
+        return;
+    }
+    parser_expect(p, KW_IF, NULL);
+}
 
+static void rule_block(Parser *p){
+    parser_expect(p, T_LF, NULL);
+    parser_expect(p, T_INDENT, NULL);
+    rule_statement_list(p);
+    parser_expect(p, T_DEDENT, NULL);
+}
+
+static void rule_statement_list(Parser *p){
+    rule_statement_line(p);
+    rule_statement_line_rest(p);
+}
+
+static bool first_statement_line_rest(Parser *p){
+    if(parser_check(p, KW_VAR) || 
+        parser_check(p, KW_VAL) ||
+        parser_check(p, KW_RETURN) ||
+        parser_check(p, KW_IF) ||
+        parser_check(p, KW_WHILE) ||
+        parser_check(p, KW_FOR) ||
+        parser_check(p, T_ID) ||
+        parser_check(p, KW_FOR)){ //TODO expression_noid
+
+        return true;
+    }
+    return false;
+}
+
+static void rule_statement_list_rest(Parser *p){
+    if(first_statement_line_rest(p)){
+        rule_statement_line(p);
+        rule_statement_line_rest(p);
+    }
+}
+
+static void rule_statement_line(Parser *p){
+    rule_statement(p);
+    rule_statement_line_rest(p);
+}
+
+static void rule_statement_line_rest(Parser *p){
+    if(parser_check(p, T_SEMIC)){
+        parser_expect(p, T_SEMIC, NULL);
+        rule_statement(p);
+        rule_statement_line_rest(p);
+        return;
+    }
+
+    parser_expect(p, T_LF, NULL);
+}
+
+static void rule_statement(Parser *p){
+    if(parser_check(p, KW_VAR) || parser_check(p, KW_VAL)){
+        rule_var_definition(p);
+        return;
+    }
+
+    rule_inline_statement(p);
+}
+
+static void rule_inline_statement(Parser *p){
+    if(parser_check(p, KW_RETURN)){
+        rule_return_statement(p);
+        return;
+    }
+    if(parser_check(p, KW_IF)){
+        rule_if_statement(p);
+        return;
+    }
+    if(parser_check(p, KW_WHILE)){
+        rule_while_statement(p);
+        return;
+    }
+    if(parser_check(p, KW_FOR)){
+        rule_for_statement(p);
+        return;
+    }
+    if(parser_check(p, T_ID)){
+        parser_expect(p, T_ID, NULL);
+        rule_id_statement(p);
+        return;
+    }
+/*    if(parser_check(p, KW_RETURN)){ TODO expression_noid 
+        rule_return_statement(p);
+        return;
+    }*/
+
+    //TODO finish after SA dano
+}
+
+static void rule_var_definition(Parser *p){
+    rule_var_kind(p);
+    parser_expect(p, T_ID, NULL);
+    rule_optional_type(p);
+    parser_expect(p, T_EQU_SIGN, NULL);
+    rule_rhs(p);
+}
+
+static void rule_var_kind(Parser *p){
+    if (parser_check(p, KW_VAR)){
+        parser_expect(p, KW_VAR, NULL);
+    }
+    parser_expect(p, KW_VAL, NULL);
+}
+
+static void rule_id_statement(Parser *p){
+    if(parser_check(p, T_EQU_SIGN)){
+        parser_expect(p, T_EQU_SIGN, NULL);
+        rule_rhs(p);
+    }
+    //TODO finish after expression after id
 }
 
 
