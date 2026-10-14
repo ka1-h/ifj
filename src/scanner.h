@@ -91,7 +91,7 @@ typedef enum{
 
     //CONTROL
     KW_TO,      //to
-    KW_FROM,    //from
+    KW_BY,    //by
     KW_UNTIL,   //until
 }t_type;
 
@@ -132,7 +132,7 @@ static const KeyWord keywords[] = {
     {"match",KW_MATCH},
     {"type",KW_TYPE},
     {"to",KW_TO},
-    {"from",KW_FROM},
+    {"by",KW_BY},
     {"until",KW_UNTIL},
     {NULL, T_ID}
 };
