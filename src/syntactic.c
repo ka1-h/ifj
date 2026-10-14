@@ -4,6 +4,7 @@
 #include "syntactic.h"
 #include "tree.h"
 
+
 void handle_tokens(Parser *p){
     rule_program(p);
 }
@@ -35,9 +36,17 @@ static void rule_top_list(Parser *p){
 static void rule_top_item(Parser *p){
     Token t = *parser_peek(p);
     if(t.type == T_MAIN){
+        parser_expect(p, T_MAIN, NULL);
+        rule_annotation_eol(p);
+        rule_function_def(p);
     }else if(t.type == KW_DEF){
-    }else if(t.type == KW_CLASS){
+        rule_function_def(p);
+    }else if(t.type == KW_TYPE){
+        rule_type_def(p);
+    }else if(t.type == KW_CASE){
+        rule_case_class_def(p);
     }else if(t.type == KW_EXTENSION){
+        rule_extension_def(p);
     }
 }
 
@@ -58,6 +67,7 @@ static void rule_function_def(Parser *p){
     
     if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
     rule_rhs(p);
+    parser_expect(p, T_LF, NULL);
 }
 
 static void rule_type_def(Parser *p){
@@ -74,16 +84,20 @@ static void rule_type(Parser *p){
         rule_simple_type(p);
         rule_union_rest(p);
     }else{
-        parser_expect(p, T_LPARENTH, NULL);
-        rule_func_type_params(p);
-        parser_expect(p, T_RPARENTH, NULL);
-        parser_expect(p, T_GOET, NULL);
+        if(parser_check(p, T_UNIT_BRACKETS)){
+            parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+        }else{
+            parser_expect(p, T_LPARENTH, NULL);
+            rule_func_type_params(p);
+            parser_expect(p, T_RPARENTH, NULL);
+        }
+        parser_expect(p, T_LAMB, NULL);
         rule_type(p);
     }
 }
 
 static bool first_type(Parser *p){
-    if (first_simple_type(p) || parser_check(p, T_LPARENTH)) return true;
+    if (first_simple_type(p) || parser_check(p, T_LPARENTH) || parser_check(p, T_UNIT_BRACKETS)) return true;
     return false;
 }
 
@@ -136,9 +150,13 @@ static void rule_case_class_def(Parser *p){
     parser_expect(p, KW_CASE, NULL);
     parser_expect(p, KW_CLASS, NULL);
     parser_expect(p, T_ID, NULL);
-    parser_expect(p, T_LPARENTH, NULL);
-    rule_param_list(p);
-    parser_expect(p, T_RPARENTH, NULL);
+    if(parser_check(p, T_UNIT_BRACKETS)){
+        parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+    }else{
+        parser_expect(p, T_LPARENTH, NULL);
+        rule_param_list(p);
+        parser_expect(p, T_RPARENTH, NULL);
+    }
     parser_expect(p, T_LF, NULL);
 }
 
@@ -147,8 +165,11 @@ static void rule_extension_def(Parser *p){
     parser_expect(p, T_LPARENTH, NULL);
     rule_param(p);
     parser_expect(p, T_RPARENTH, NULL);
+    parser_expect(p, T_LF, NULL);
     parser_expect(p, T_INDENT, NULL);
     rule_method_list(p);
+    parser_expect(p, T_DEDENT, NULL);
+    parser_expect(p, T_LF, NULL);
 }
 
 static void rule_method_list(Parser *p){
@@ -168,6 +189,11 @@ static void rule_annotation_eol(Parser *p){
 }
 
 static void rule_param_lists(Parser *p){
+    if(parser_check(p, T_UNIT_BRACKETS)){
+        parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+        rule_param_lists(p);
+        return;
+    }
     if(parser_check(p, T_LPARENTH)){
         parser_expect(p, T_LPARENTH, NULL);
         rule_param_list(p);
@@ -213,6 +239,7 @@ static void rule_func_type_params(Parser *p){
 static void rule_func_type_rest(Parser *p){
     if(parser_check(p, T_COMMA)){
         parser_expect(p, T_COMMA, NULL);
+        rule_type(p);
         rule_func_type_rest(p);
     }
 }
@@ -235,7 +262,7 @@ static void rule_block(Parser *p){
 
 static void rule_statement_list(Parser *p){
     rule_statement_line(p);
-    rule_statement_line_rest(p);
+    rule_statement_list_rest(p);
 }
 
 static bool first_statement_line_rest(Parser *p){
@@ -256,7 +283,7 @@ static bool first_statement_line_rest(Parser *p){
 static void rule_statement_list_rest(Parser *p){
     if(first_statement_line_rest(p)){
         rule_statement_line(p);
-        rule_statement_line_rest(p);
+        rule_statement_list_rest(p);
     }
 }
 
@@ -326,6 +353,7 @@ static void rule_var_definition(Parser *p){
 static void rule_var_kind(Parser *p){
     if (parser_check(p, KW_VAR)){
         parser_expect(p, KW_VAR, NULL);
+        return;
     }
     parser_expect(p, KW_VAL, NULL);
 }
