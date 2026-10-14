@@ -222,7 +222,8 @@ static void rule_rhs(Parser *p){
         rule_block(p);
         return;
     }
-    parser_expect(p, KW_IF, NULL);
+
+    rule_value(p);
 }
 
 static void rule_block(Parser *p){
@@ -335,6 +336,293 @@ static void rule_id_statement(Parser *p){
         rule_rhs(p);
     }
     //TODO finish after expression after id
+}
+
+
+static void rule_return_statement(Parser *p){
+    parser_expect(p, KW_RETURN, NULL);
+    rule_return_value(p);
+}
+
+static bool follow_return_value(Parser *p){
+    if(parser_check(p, T_LF) ||
+        parser_check(p, T_SEMIC) ||
+        parser_check(p, KW_ELSE) ||
+        parser_check(p, T_COMMA) ||
+        parser_check(p, T_RPARENTH)){
+            return true;
+        }
+    return false;
+}
+
+static void rule_return_value(Parser *p){
+    if(!follow_return_value(p)){
+        rule_value(p);
+    }
+}
+
+static void rule_if_statement(Parser *p){
+    parser_expect(p, KW_IF, NULL);
+    //TODO expression
+    parser_expect(p, KW_THEN, NULL);
+    rule_body(p);
+    rule_else_part(p);
+}
+
+static void rule_else_part(Parser *p){
+    if(parser_check(p, KW_ELSE)){
+        parser_expect(p, KW_ELSE, NULL);
+        rule_body(p);
+    }
+}
+
+static void rule_while_statement(Parser *p){
+    parser_expect(p, KW_WHILE, NULL);
+    //TODO expression
+    parser_expect(p, KW_DO, NULL);
+    rule_body(p);
+}
+
+static void rule_body(Parser *p){
+    if(parser_check(p, T_LF)){
+        rule_block(p);
+        return;
+    }
+    if(parser_check(p, T_MINUS) || parser_check(p, T_NEG)){
+        //TODO expression_unary
+        return;
+    }
+
+    rule_inline_statement(p);
+}
+
+static void rule_for_statement(Parser *p){
+    parser_expect(p, KW_FOR, NULL);
+    rule_for_header(p);
+    parser_expect(p, KW_DO, NULL);
+    rule_body(p);
+}
+
+static void rule_for_header(Parser *p){
+    if(parser_check(p, T_LF)){
+        parser_expect(p, T_LF, NULL);
+        parser_expect(p, T_INDENT, NULL);
+        rule_generator(p);
+        rule_inline_guards(p);
+        parser_expect(p, T_LF, NULL);
+        rule_guard_lines(p);
+        parser_expect(p, T_DEDENT, NULL);
+        return;
+    }
+
+    rule_generator(p);
+    rule_inline_guards(p);
+}
+
+static void rule_generator(Parser *p){
+    parser_expect(p, T_ID, NULL);
+    parser_expect(p, T_ASSIG, NULL);
+    //TODO expression
+    rule_range_op(p);
+    //TODO expression
+    rule_step(p);
+}
+
+static void rule_range_op(Parser *p){
+    if(parser_check(p, KW_UNTIL)){
+        parser_expect(p, KW_UNTIL, NULL);
+        return;
+    }
+
+    parser_expect(p, KW_TO, NULL);
+}
+
+static void rule_step(Parser *p){
+    if(parser_check(p, KW_BY)){
+        parser_expect(p, KW_BY, NULL);
+        //TODO expression
+    }
+}
+
+static void rule_inline_guards(Parser *p){
+    if(parser_check(p, KW_IF)){
+        parser_expect(p, KW_IF, NULL);
+        //TODO expression
+        rule_inline_guards(p);
+    }
+}
+
+static void rule_guard_lines(Parser *p){
+    if(parser_check(p, KW_IF)){
+        parser_expect(p, KW_IF, NULL);
+        //TODO expression
+        rule_inline_guards(p);
+        parser_expect(p, T_LF, NULL);
+        rule_guard_lines(p);
+    }
+}
+
+static void rule_value(Parser *p){
+    if(parser_check(p, KW_IF)){
+        rule_if_statement(p);
+        return;
+    }
+
+    //TODO value_expression
+    rule_match_suffix(p);
+}
+
+static void rule_match_suffix(Parser *p){
+    if(parser_check(p, KW_MATCH)){
+        parser_expect(p, KW_MATCH, NULL);
+        parser_expect(p, T_LF, NULL);
+        parser_expect(p, T_INDENT, NULL);
+        rule_case_list(p);
+        parser_expect(p, T_DEDENT, NULL);
+    }
+}
+
+static void rule_case_list(Parser *p){
+    rule_case_clause(p);
+    rule_case_list_rest(p);
+}
+
+static void rule_case_list_rest(Parser *p){
+    if(parser_check(p, KW_CASE)){
+        rule_case_clause(p);
+        rule_case_list_rest(p);
+    }
+}
+
+static void rule_case_clause(Parser *p){
+    parser_expect(p, KW_CASE, NULL);
+    rule_pattern(p);
+    rule_case_guard(p);
+    parser_expect(p, T_LAMB, NULL);
+    rule_rhs(p);
+    parser_expect(p, T_LF, NULL);
+}
+
+static void rule_case_guard(Parser *p){
+    if(parser_check(p, KW_IF)){
+        parser_expect(p, KW_IF, NULL);
+        //TODO expression
+    }
+}
+
+static void rule_pattern(Parser *p){
+    if(parser_check(p, T_REPRESPATTERN)){
+        parser_expect(p, T_REPRESPATTERN, NULL);
+        return;
+    }
+    if(parser_check(p, T_ID)){
+        parser_expect(p, T_ID, NULL);
+        rule_id_pattern(p);
+        return;
+    }
+
+    rule_literal_pattern(p);
+}
+
+static void rule_id_pattern(Parser *p){
+    if(parser_check(p, T_COL)){
+        parser_expect(p, T_COL, NULL);
+        rule_type(p);
+        return;
+    }
+
+    parser_expect(p, T_LPARENTH, NULL);
+    rule_subpattern_list(p);
+    parser_expect(p, T_RPARENTH, NULL);
+}
+
+static bool first_literal_pattern(Parser *p){
+    if(parser_check(p, T_INT) ||
+        parser_check(p, T_DOUBLE) ||
+        parser_check(p, T_STRING) ||
+        parser_check(p, KW_TRUE) ||
+        parser_check(p, KW_FALSE) ||
+        parser_check(p, T_MINUS) ||
+        parser_check(p, T_UNIT_BRACKETS)){
+            return true;
+        }
+    return false;
+}
+
+static bool first_subpattern(Parser *p){
+    if(parser_check(p, T_ID) ||
+        parser_check(p, T_REPRESPATTERN) ||
+        first_literal_pattern(p)){
+            return true;
+        }
+    return false;
+}
+
+static void rule_subpattern_list(Parser *p){
+    if(first_subpattern(p)){
+        rule_subpattern(p);
+        rule_subpattern_rest(p);
+    }
+}
+
+static void rule_subpattern_rest(Parser *p){
+    if(parser_check(p, T_COMMA)){
+        parser_expect(p, T_COMMA, NULL);
+        rule_subpattern(p);
+        rule_subpattern_rest(p);
+    }
+}
+
+static void rule_subpattern(Parser *p){
+    if(parser_check(p, T_ID)){
+        parser_expect(p, T_ID, NULL);
+        return;
+    }
+    if(parser_check(p, T_REPRESPATTERN)){
+        parser_expect(p, T_REPRESPATTERN, NULL);
+        return;
+    }
+
+    rule_literal_pattern(p);
+}
+
+static void rule_literal_pattern(Parser *p){
+    if(parser_check(p, T_INT)){
+        parser_expect(p, T_INT, NULL);
+        return;
+    }
+    if(parser_check(p, T_DOUBLE)){
+        parser_expect(p, T_DOUBLE, NULL);
+        return;
+    }
+    if(parser_check(p, T_STRING)){
+        parser_expect(p, T_STRING, NULL);
+        return;
+    }
+    if(parser_check(p, KW_TRUE)){
+        parser_expect(p, KW_TRUE, NULL);
+        return;
+    }
+    if(parser_check(p, KW_FALSE)){
+        parser_expect(p, KW_FALSE, NULL);
+        return;
+    }
+    if(parser_check(p, T_MINUS)){
+        parser_expect(p, T_MINUS, NULL);
+        rule_number(p);
+        return;
+    }
+
+    parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+}
+
+static void rule_number(Parser *p){
+    if(parser_check(p, T_INT)){
+        parser_expect(p, T_INT, NULL);
+        return;
+    }
+
+    parser_expect(p, T_DOUBLE, NULL);
 }
 
 
