@@ -260,6 +260,8 @@ const char *tree_rule_name(tree_rule_t rule) {
         "EXPRESSION_AFTER_ID",
         "EXPRESSION_NOID",
         "EXPRESSION_UNARY",
+        "LEADING_EOL_1",
+        "LEADING_EOL_2",
     };
     if (rule < 0 || rule >= RULE_COUNT) {
         return "NONE";

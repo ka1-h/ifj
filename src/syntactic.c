@@ -9,6 +9,10 @@ void handle_tokens(Parser *p){
 }
 
 void rule_program(Parser *p){
+    if (p->error != PARSE_OK) return;
+
+    rule_leading_eol(p);
+    if (p->error != 0) return;
 
     rule_prolog(p);
     if (p->error != 0) return;
@@ -19,13 +23,23 @@ void rule_program(Parser *p){
     parser_expect(p, T_EOF, NULL);
 }
 
+void rule_leading_eol(Parser *p){
+    if (p->error != PARSE_OK) return;
+    if(parser_check(p, T_LF)){
+        parser_expect(p, T_LF, NULL);
+        rule_leading_eol(p);
+    }
+}
+
 void rule_prolog(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (!parser_expect(p, KW_IMPORT, NULL)) return;
     if (!parser_expect(p, T_IFJ, NULL)) return;
     parser_expect(p, T_LF, NULL);
 }
 
 void rule_top_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(first_top_item(p)){
         rule_top_item(p);
         rule_top_list(p);
@@ -33,6 +47,7 @@ void rule_top_list(Parser *p){
 }
 
 void rule_top_item(Parser *p){
+    if (p->error != PARSE_OK) return;
     Token t = *parser_peek(p);
     if(t.type == T_MAIN){
         parser_expect(p, T_MAIN, NULL);
@@ -58,6 +73,7 @@ bool first_top_item(const Parser *p) {
 }
 
 void rule_function_def(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (!parser_expect(p, KW_DEF, NULL)) return;
     if (!parser_expect(p, T_ID, NULL)) return;
 
@@ -70,6 +86,7 @@ void rule_function_def(Parser *p){
 }
 
 void rule_type_def(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (!parser_expect(p, KW_TYPE, NULL)) return;
     if (!parser_expect(p, T_ID, NULL)) return;
     if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
@@ -79,6 +96,7 @@ void rule_type_def(Parser *p){
 }
 
 void rule_type(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(first_simple_type(p)){
         rule_simple_type(p);
         rule_union_rest(p);
@@ -113,6 +131,7 @@ bool first_simple_type(Parser *p){
 }
 
 void rule_union_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (parser_check(p, T_UNIF)){
         parser_expect(p, T_UNIF, NULL);
         rule_simple_type(p);
@@ -121,6 +140,7 @@ void rule_union_rest(Parser *p){
 }
 
 void rule_simple_type(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (parser_check(p, KW_BOOLEAN)) {
         parser_expect(p, KW_BOOLEAN, NULL);
         return;
@@ -146,6 +166,7 @@ void rule_simple_type(Parser *p){
 
 
 void rule_case_class_def(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_CASE, NULL);
     parser_expect(p, KW_CLASS, NULL);
     parser_expect(p, T_ID, NULL);
@@ -160,6 +181,7 @@ void rule_case_class_def(Parser *p){
 }
 
 void rule_extension_def(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_EXTENSION, NULL);
     parser_expect(p, T_LPARENTH, NULL);
     rule_param(p);
@@ -172,11 +194,13 @@ void rule_extension_def(Parser *p){
 }
 
 void rule_method_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     rule_function_def(p);
     rule_method_list_rest(p);
 }
 
 void rule_method_list_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_DEF)){
         rule_function_def(p);
         rule_method_list_rest(p);
@@ -184,10 +208,12 @@ void rule_method_list_rest(Parser *p){
 }
 
 void rule_annotation_eol(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_LF)) parser_expect(p, T_LF, NULL);
 }
 
 void rule_param_lists(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_UNIT_BRACKETS)){
         parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
         rule_param_lists(p);
@@ -202,12 +228,14 @@ void rule_param_lists(Parser *p){
 }
 
 void rule_param(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(!parser_expect(p, T_ID, NULL)) return;
     if(!parser_expect(p, T_COL, NULL)) return;
     rule_type(p);
 }
 
 void rule_param_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_ID)){
         rule_param(p);
         rule_param_list_rest(p);
@@ -215,6 +243,7 @@ void rule_param_list(Parser *p){
 }
 
 void rule_param_list_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
         parser_expect(p, T_COMMA, NULL);
         rule_param_list(p);
@@ -222,6 +251,7 @@ void rule_param_list_rest(Parser *p){
 }
 
 void rule_optional_type(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COL)){
         parser_expect(p, T_COL, NULL);
         rule_type(p);
@@ -229,6 +259,7 @@ void rule_optional_type(Parser *p){
 }
 
 void rule_func_type_params(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(first_type(p)){
         rule_type(p);
         rule_func_type_rest(p);
@@ -236,6 +267,7 @@ void rule_func_type_params(Parser *p){
 }
 
 void rule_func_type_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
         parser_expect(p, T_COMMA, NULL);
         rule_type(p);
@@ -244,6 +276,7 @@ void rule_func_type_rest(Parser *p){
 }
 
 void rule_rhs(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_LF)){
         rule_block(p);
         return;
@@ -253,6 +286,7 @@ void rule_rhs(Parser *p){
 }
 
 void rule_block(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, T_LF, NULL);
     parser_expect(p, T_INDENT, NULL);
     rule_statement_list(p);
@@ -260,6 +294,7 @@ void rule_block(Parser *p){
 }
 
 void rule_statement_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     rule_statement_line(p);
     rule_statement_list_rest(p);
 }
@@ -293,6 +328,7 @@ bool first_expression_noid(Parser *p){
 }
 
 void rule_statement_list_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(first_statement_line_rest(p)){
         rule_statement_line(p);
         rule_statement_list_rest(p);
@@ -300,11 +336,13 @@ void rule_statement_list_rest(Parser *p){
 }
 
 void rule_statement_line(Parser *p){
+    if (p->error != PARSE_OK) return;
     rule_statement(p);
     rule_statement_line_rest(p);
 }
 
 void rule_statement_line_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_SEMIC)){
         parser_expect(p, T_SEMIC, NULL);
         rule_statement(p);
@@ -316,6 +354,7 @@ void rule_statement_line_rest(Parser *p){
 }
 
 void rule_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_VAR) || parser_check(p, KW_VAL)){
         rule_var_definition(p);
         return;
@@ -325,6 +364,7 @@ void rule_statement(Parser *p){
 }
 
 void rule_inline_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_RETURN)){
         rule_return_statement(p);
         return;
@@ -352,6 +392,7 @@ void rule_inline_statement(Parser *p){
 }
 
 void rule_var_definition(Parser *p){
+    if (p->error != PARSE_OK) return;
     rule_var_kind(p);
     parser_expect(p, T_ID, NULL);
     rule_optional_type(p);
@@ -360,6 +401,7 @@ void rule_var_definition(Parser *p){
 }
 
 void rule_var_kind(Parser *p){
+    if (p->error != PARSE_OK) return;
     if (parser_check(p, KW_VAR)){
         parser_expect(p, KW_VAR, NULL);
         return;
@@ -368,6 +410,7 @@ void rule_var_kind(Parser *p){
 }
 
 void rule_id_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_EQU_SIGN)){
         parser_expect(p, T_EQU_SIGN, NULL);
         rule_rhs(p);
@@ -377,6 +420,7 @@ void rule_id_statement(Parser *p){
 
 
 void rule_return_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_RETURN, NULL);
     rule_return_value(p);
 }
@@ -393,12 +437,14 @@ bool follow_return_value(Parser *p){
 }
 
 void rule_return_value(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(!follow_return_value(p)){
         rule_value(p);
     }
 }
 
 void rule_if_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_IF, NULL);
     //TODO expression
     parser_expect(p, KW_THEN, NULL);
@@ -407,6 +453,7 @@ void rule_if_statement(Parser *p){
 }
 
 void rule_else_part(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_ELSE)){
         parser_expect(p, KW_ELSE, NULL);
         rule_body(p);
@@ -414,6 +461,7 @@ void rule_else_part(Parser *p){
 }
 
 void rule_while_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_WHILE, NULL);
     //TODO expression
     parser_expect(p, KW_DO, NULL);
@@ -421,6 +469,7 @@ void rule_while_statement(Parser *p){
 }
 
 void rule_body(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_LF)){
         rule_block(p);
         return;
@@ -434,6 +483,7 @@ void rule_body(Parser *p){
 }
 
 void rule_for_statement(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_FOR, NULL);
     rule_for_header(p);
     parser_expect(p, KW_DO, NULL);
@@ -441,6 +491,7 @@ void rule_for_statement(Parser *p){
 }
 
 void rule_for_header(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_LF)){
         parser_expect(p, T_LF, NULL);
         parser_expect(p, T_INDENT, NULL);
@@ -457,6 +508,7 @@ void rule_for_header(Parser *p){
 }
 
 void rule_generator(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, T_ID, NULL);
     parser_expect(p, T_ASSIG, NULL);
     //TODO expression
@@ -466,6 +518,7 @@ void rule_generator(Parser *p){
 }
 
 void rule_range_op(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_UNTIL)){
         parser_expect(p, KW_UNTIL, NULL);
         return;
@@ -475,6 +528,7 @@ void rule_range_op(Parser *p){
 }
 
 void rule_step(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_BY)){
         parser_expect(p, KW_BY, NULL);
         //TODO expression
@@ -482,6 +536,7 @@ void rule_step(Parser *p){
 }
 
 void rule_inline_guards(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
         parser_expect(p, KW_IF, NULL);
         //TODO expression
@@ -490,6 +545,7 @@ void rule_inline_guards(Parser *p){
 }
 
 void rule_guard_lines(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
         parser_expect(p, KW_IF, NULL);
         //TODO expression
@@ -500,6 +556,7 @@ void rule_guard_lines(Parser *p){
 }
 
 void rule_value(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
         rule_if_statement(p);
         return;
@@ -510,6 +567,7 @@ void rule_value(Parser *p){
 }
 
 void rule_match_suffix(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_MATCH)){
         parser_expect(p, KW_MATCH, NULL);
         parser_expect(p, T_LF, NULL);
@@ -520,11 +578,13 @@ void rule_match_suffix(Parser *p){
 }
 
 void rule_case_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     rule_case_clause(p);
     rule_case_list_rest(p);
 }
 
 void rule_case_list_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_CASE)){
         rule_case_clause(p);
         rule_case_list_rest(p);
@@ -532,6 +592,7 @@ void rule_case_list_rest(Parser *p){
 }
 
 void rule_case_clause(Parser *p){
+    if (p->error != PARSE_OK) return;
     parser_expect(p, KW_CASE, NULL);
     rule_pattern(p);
     rule_case_guard(p);
@@ -541,6 +602,7 @@ void rule_case_clause(Parser *p){
 }
 
 void rule_case_guard(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
         parser_expect(p, KW_IF, NULL);
         //TODO expression
@@ -548,6 +610,7 @@ void rule_case_guard(Parser *p){
 }
 
 void rule_pattern(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_REPRESPATTERN)){
         parser_expect(p, T_REPRESPATTERN, NULL);
         return;
@@ -562,6 +625,7 @@ void rule_pattern(Parser *p){
 }
 
 void rule_id_pattern(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COL)){
         parser_expect(p, T_COL, NULL);
         rule_type(p);
@@ -596,6 +660,7 @@ bool first_subpattern(Parser *p){
 }
 
 void rule_subpattern_list(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(first_subpattern(p)){
         rule_subpattern(p);
         rule_subpattern_rest(p);
@@ -603,6 +668,7 @@ void rule_subpattern_list(Parser *p){
 }
 
 void rule_subpattern_rest(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
         parser_expect(p, T_COMMA, NULL);
         rule_subpattern(p);
@@ -611,6 +677,7 @@ void rule_subpattern_rest(Parser *p){
 }
 
 void rule_subpattern(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_ID)){
         parser_expect(p, T_ID, NULL);
         return;
@@ -624,6 +691,7 @@ void rule_subpattern(Parser *p){
 }
 
 void rule_literal_pattern(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_INT)){
         parser_expect(p, T_INT, NULL);
         return;
@@ -654,6 +722,7 @@ void rule_literal_pattern(Parser *p){
 }
 
 void rule_number(Parser *p){
+    if (p->error != PARSE_OK) return;
     if(parser_check(p, T_INT)){
         parser_expect(p, T_INT, NULL);
         return;
@@ -680,7 +749,15 @@ bool fetch_token(Parser *p) {
             free(p->current.data);
             p->current.data = NULL;
         }
+        #ifdef DEBUG_TOKENS
+            fprintf(stderr, "Token: type = %d, line = %d and data = %s\n",
+                    p->current.type, p->current.line,
+                    p->current.data ? p->current.data : "NULL");
+        #endif
     } while (p->current.type == T_SPACE);
+
+
+
     return true;
 }
 

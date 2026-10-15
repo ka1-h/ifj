@@ -29,6 +29,7 @@ typedef struct {
 } Parser;
 
 void rule_program(Parser *p);
+void rule_leading_eol(Parser *p);
 void rule_prolog(Parser *p);
 void rule_top_list(Parser *p);
 void rule_top_item(Parser *p);
