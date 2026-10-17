@@ -93,9 +93,9 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
 
     while(1){
         c = fgetc(src);
-        //printf("%c", c);
         switch (state){
             case S_START:
+                token->line = line_now;
                 if(c == EOF){
                     token->type = T_EOF;
                     buffer_clear(buffer);
@@ -850,7 +850,27 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     break;
                 }else{
                     if(pole_dent[*pos] != 0 && *mul_de == true){
-                        what_dent(*dent, pos, pole_dent);
+                        //printf("%d\n", (*dent));
+                        //printf("%d\n", pole_dent[*pos]);
+                        if(pole_dent[*pos] <= (*dent)){
+                            ungetc(c, src);
+                            state = S_START;
+                            buffer_clear(buffer);
+                            *processed = true;
+                            break;
+                        }else{
+                            what_dent(*dent, pos, pole_dent);
+                            ungetc(c, src);
+                            token->type = T_DEDENT;
+                            *processed = false;
+                            if(pole_dent[*pos] == 0){
+                                *mul_de = false;
+                                *processed = true;
+                            }
+                            buffer_clear(buffer);
+                            return 0;
+                        }
+                        /*what_dent(*dent, pos, pole_dent);
                         ungetc(c, src);
                         token->type = T_DEDENT;
                         *processed = false;
@@ -859,7 +879,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                             *processed = true;
                         }
                         buffer_clear(buffer);
-                        return 0;
+                        return 0;*/
                     }else{
                         ungetc(c, src);
                         token->type = T_LF;
