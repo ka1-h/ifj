@@ -4,63 +4,101 @@
 #include "syntactic.h"
 #include "tree.h"
 
-void handle_tokens(Parser *p){
-    rule_program(p);
+// Creates a nonterminal node and attaches it to parent; sets error 99 on failure
+static tree_node_t *add_node(Parser *p, tree_node_t *parent, tree_rule_t rule){
+    tree_node_t *node = tree_create_nonterminal(rule);
+    if (!node || !tree_add_child(parent, node)) {
+        tree_dispose(&node);
+        p->error = PARSE_ERR_INTERNAL;
+        return NULL;
+    }
+    return node;
 }
 
-void rule_program(Parser *p){
-    if (p->error != PARSE_OK) return;
-
-    rule_leading_eol(p);
-    if (p->error != 0) return;
-
-    rule_prolog(p);
-    if (p->error != 0) return;
-
-    rule_top_list(p);
-    if (p->error != 0) return;
-
-    parser_expect(p, T_EOF, NULL);
+tree_node_t *handle_tokens(Parser *p){
+    return rule_program(p);
 }
 
-void rule_leading_eol(Parser *p){
+tree_node_t *rule_program(Parser *p){
+    tree_node_t *node = tree_create_nonterminal(RULE_PROGRAM);
+    if (!node) {
+        if (p->error == PARSE_OK) p->error = PARSE_ERR_INTERNAL;
+        return NULL;
+    }
+    if (p->error != PARSE_OK) return node;
+
+    rule_leading_eol(p, node);
+    if (p->error != 0) return node;
+
+    rule_prolog(p, node);
+    if (p->error != 0) return node;
+
+    rule_top_list(p, node);
+    if (p->error != 0) return node;
+
+    parser_expect(p, T_EOF, node);
+    return node;
+}
+
+void rule_leading_eol(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_LF)){
-        parser_expect(p, T_LF, NULL);
-        rule_leading_eol(p);
+        tree_node_t *node = add_node(p, parent, RULE_LEADING_EOL_1);
+        if (!node) return;
+        parser_expect(p, T_LF, node);
+        rule_leading_eol(p, node);
+    }else{
+        add_node(p, parent, RULE_LEADING_EOL_2);
     }
 }
 
-void rule_prolog(Parser *p){
+void rule_prolog(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if (!parser_expect(p, KW_IMPORT, NULL)) return;
-    if (!parser_expect(p, T_IFJ, NULL)) return;
-    parser_expect(p, T_LF, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_PROLOG);
+    if (!node) return;
+    if (!parser_expect(p, KW_IMPORT, node)) return;
+    if (!parser_expect(p, T_IFJ, node)) return;
+    parser_expect(p, T_LF, node);
 }
 
-void rule_top_list(Parser *p){
+void rule_top_list(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(first_top_item(p)){
-        rule_top_item(p);
-        rule_top_list(p);
+        tree_node_t *node = add_node(p, parent, RULE_TOP_LIST_1);
+        if (!node) return;
+        rule_top_item(p, node);
+        rule_top_list(p, node);
+    }else{
+        add_node(p, parent, RULE_TOP_LIST_2);
     }
 }
 
-void rule_top_item(Parser *p){
+void rule_top_item(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     Token t = *parser_peek(p);
+    tree_node_t *node;
     if(t.type == T_MAIN){
-        parser_expect(p, T_MAIN, NULL);
-        rule_annotation_eol(p);
-        rule_function_def(p);
+        node = add_node(p, parent, RULE_TOP_ITEM_1);
+        if (!node) return;
+        parser_expect(p, T_MAIN, node);
+        rule_annotation_eol(p, node);
+        rule_function_def(p, node);
     }else if(t.type == KW_DEF){
-        rule_function_def(p);
+        node = add_node(p, parent, RULE_TOP_ITEM_2);
+        if (!node) return;
+        rule_function_def(p, node);
     }else if(t.type == KW_TYPE){
-        rule_type_def(p);
+        node = add_node(p, parent, RULE_TOP_ITEM_3);
+        if (!node) return;
+        rule_type_def(p, node);
     }else if(t.type == KW_CASE){
-        rule_case_class_def(p);
+        node = add_node(p, parent, RULE_TOP_ITEM_4);
+        if (!node) return;
+        rule_case_class_def(p, node);
     }else if(t.type == KW_EXTENSION){
-        rule_extension_def(p);
+        node = add_node(p, parent, RULE_TOP_ITEM_5);
+        if (!node) return;
+        rule_extension_def(p, node);
     }
 }
 
@@ -72,44 +110,53 @@ bool first_top_item(const Parser *p) {
             parser_check(p, KW_EXTENSION);
 }
 
-void rule_function_def(Parser *p){
+void rule_function_def(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if (!parser_expect(p, KW_DEF, NULL)) return;
-    if (!parser_expect(p, T_ID, NULL)) return;
+    tree_node_t *node = add_node(p, parent, RULE_FUNCTION_DEF);
+    if (!node) return;
+    if (!parser_expect(p, KW_DEF, node)) return;
+    if (!parser_expect(p, T_ID, node)) return;
 
-    rule_param_lists(p);
-    rule_optional_type(p);
-    
-    if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
-    rule_rhs(p);
-    parser_expect(p, T_LF, NULL);
+    rule_param_lists(p, node);
+    rule_optional_type(p, node);
+
+    if (!parser_expect(p, T_EQU_SIGN, node)) return;
+    rule_rhs(p, node);
+    parser_expect(p, T_LF, node);
 }
 
-void rule_type_def(Parser *p){
+void rule_type_def(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if (!parser_expect(p, KW_TYPE, NULL)) return;
-    if (!parser_expect(p, T_ID, NULL)) return;
-    if (!parser_expect(p, T_EQU_SIGN, NULL)) return;
+    tree_node_t *node = add_node(p, parent, RULE_TYPE_DEF);
+    if (!node) return;
+    if (!parser_expect(p, KW_TYPE, node)) return;
+    if (!parser_expect(p, T_ID, node)) return;
+    if (!parser_expect(p, T_EQU_SIGN, node)) return;
 
-    rule_type(p);
-    parser_expect(p, T_LF, NULL);
+    rule_type(p, node);
+    parser_expect(p, T_LF, node);
 }
 
-void rule_type(Parser *p){
+void rule_type(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(first_simple_type(p)){
-        rule_simple_type(p);
-        rule_union_rest(p);
+        node = add_node(p, parent, RULE_TYPE_1);
+        if (!node) return;
+        rule_simple_type(p, node);
+        rule_union_rest(p, node);
     }else{
+        node = add_node(p, parent, RULE_TYPE_2);
+        if (!node) return;
         if(parser_check(p, T_UNIT_BRACKETS)){
-            parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+            parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
         }else{
-            parser_expect(p, T_LPARENTH, NULL);
-            rule_func_type_params(p);
-            parser_expect(p, T_RPARENTH, NULL);
+            parser_expect(p, T_LPARENTH, node);
+            rule_func_type_params(p, node);
+            parser_expect(p, T_RPARENTH, node);
         }
-        parser_expect(p, T_LAMB, NULL);
-        rule_type(p);
+        parser_expect(p, T_LAMB, node);
+        rule_type(p, node);
     }
 }
 
@@ -130,177 +177,239 @@ bool first_simple_type(Parser *p){
     return false;
 }
 
-void rule_union_rest(Parser *p){
+void rule_union_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if (parser_check(p, T_UNIF)){
-        parser_expect(p, T_UNIF, NULL);
-        rule_simple_type(p);
-        rule_union_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_UNION_REST_1);
+        if (!node) return;
+        parser_expect(p, T_UNIF, node);
+        rule_simple_type(p, node);
+        rule_union_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_UNION_REST_2);
     }
 }
 
-void rule_simple_type(Parser *p){
+void rule_simple_type(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if (parser_check(p, KW_BOOLEAN)) {
-        parser_expect(p, KW_BOOLEAN, NULL);
-        return;
-    }
+    tree_node_t *node;
     if (parser_check(p, KW_INT)) {
-        parser_expect(p, KW_INT, NULL);
-        return;
-    }
-    if (parser_check(p, KW_STRING)) {
-        parser_expect(p, KW_STRING, NULL);
+        node = add_node(p, parent, RULE_SIMPLE_TYPE_1);
+        if (node) parser_expect(p, KW_INT, node);
         return;
     }
     if (parser_check(p, KW_DOUBLE)) {
-        parser_expect(p, KW_DOUBLE, NULL);
+        node = add_node(p, parent, RULE_SIMPLE_TYPE_2);
+        if (node) parser_expect(p, KW_DOUBLE, node);
+        return;
+    }
+    if (parser_check(p, KW_STRING)) {
+        node = add_node(p, parent, RULE_SIMPLE_TYPE_3);
+        if (node) parser_expect(p, KW_STRING, node);
         return;
     }
     if (parser_check(p, KW_UNIT)) {
-        parser_expect(p, KW_UNIT, NULL);
+        node = add_node(p, parent, RULE_SIMPLE_TYPE_4);
+        if (node) parser_expect(p, KW_UNIT, node);
         return;
     }
-    parser_expect(p, T_ID, NULL);
-}
-
-
-void rule_case_class_def(Parser *p){
-    if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_CASE, NULL);
-    parser_expect(p, KW_CLASS, NULL);
-    parser_expect(p, T_ID, NULL);
-    if(parser_check(p, T_UNIT_BRACKETS)){
-        parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
-    }else{
-        parser_expect(p, T_LPARENTH, NULL);
-        rule_param_list(p);
-        parser_expect(p, T_RPARENTH, NULL);
+    if (parser_check(p, KW_BOOLEAN)) {
+        node = add_node(p, parent, RULE_SIMPLE_TYPE_5);
+        if (node) parser_expect(p, KW_BOOLEAN, node);
+        return;
     }
-    parser_expect(p, T_LF, NULL);
+    node = add_node(p, parent, RULE_SIMPLE_TYPE_6);
+    if (node) parser_expect(p, T_ID, node);
 }
 
-void rule_extension_def(Parser *p){
+
+void rule_case_class_def(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_EXTENSION, NULL);
-    parser_expect(p, T_LPARENTH, NULL);
-    rule_param(p);
-    parser_expect(p, T_RPARENTH, NULL);
-    parser_expect(p, T_LF, NULL);
-    parser_expect(p, T_INDENT, NULL);
-    rule_method_list(p);
-    parser_expect(p, T_DEDENT, NULL);
-    parser_expect(p, T_LF, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_CASE_CLASS_DEF);
+    if (!node) return;
+    parser_expect(p, KW_CASE, node);
+    parser_expect(p, KW_CLASS, node);
+    parser_expect(p, T_ID, node);
+    if(parser_check(p, T_UNIT_BRACKETS)){
+        parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
+    }else{
+        parser_expect(p, T_LPARENTH, node);
+        rule_param_list(p, node);
+        parser_expect(p, T_RPARENTH, node);
+    }
+    parser_expect(p, T_LF, node);
 }
 
-void rule_method_list(Parser *p){
+void rule_extension_def(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    rule_function_def(p);
-    rule_method_list_rest(p);
+    tree_node_t *node = add_node(p, parent, RULE_EXTENSION_DEF);
+    if (!node) return;
+    parser_expect(p, KW_EXTENSION, node);
+    parser_expect(p, T_LPARENTH, node);
+    rule_param(p, node);
+    parser_expect(p, T_RPARENTH, node);
+    parser_expect(p, T_LF, node);
+    parser_expect(p, T_INDENT, node);
+    rule_method_list(p, node);
+    parser_expect(p, T_DEDENT, node);
+    parser_expect(p, T_LF, node);
 }
 
-void rule_method_list_rest(Parser *p){
+void rule_method_list(Parser *p, tree_node_t *parent){
+    if (p->error != PARSE_OK) return;
+    tree_node_t *node = add_node(p, parent, RULE_METHOD_LIST);
+    if (!node) return;
+    rule_function_def(p, node);
+    rule_method_list_rest(p, node);
+}
+
+void rule_method_list_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_DEF)){
-        rule_function_def(p);
-        rule_method_list_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_METHOD_LIST_REST_1);
+        if (!node) return;
+        rule_function_def(p, node);
+        rule_method_list_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_METHOD_LIST_REST_2);
     }
 }
 
-void rule_annotation_eol(Parser *p){
+void rule_annotation_eol(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if(parser_check(p, T_LF)) parser_expect(p, T_LF, NULL);
+    if(parser_check(p, T_LF)){
+        tree_node_t *node = add_node(p, parent, RULE_ANNOTATION_EOL_1);
+        if (node) parser_expect(p, T_LF, node);
+    }else{
+        add_node(p, parent, RULE_ANNOTATION_EOL_2);
+    }
 }
 
-void rule_param_lists(Parser *p){
+void rule_param_lists(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_UNIT_BRACKETS)){
-        parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
-        rule_param_lists(p);
+        node = add_node(p, parent, RULE_PARAM_LISTS_1);
+        if (!node) return;
+        parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
+        rule_param_lists(p, node);
         return;
     }
     if(parser_check(p, T_LPARENTH)){
-        parser_expect(p, T_LPARENTH, NULL);
-        rule_param_list(p);
-        parser_expect(p, T_RPARENTH, NULL);
-        rule_param_lists(p);
+        node = add_node(p, parent, RULE_PARAM_LISTS_1);
+        if (!node) return;
+        parser_expect(p, T_LPARENTH, node);
+        rule_param_list(p, node);
+        parser_expect(p, T_RPARENTH, node);
+        rule_param_lists(p, node);
+        return;
     }
+    add_node(p, parent, RULE_PARAM_LISTS_2);
 }
 
-void rule_param(Parser *p){
+void rule_param(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    if(!parser_expect(p, T_ID, NULL)) return;
-    if(!parser_expect(p, T_COL, NULL)) return;
-    rule_type(p);
+    tree_node_t *node = add_node(p, parent, RULE_PARAM);
+    if (!node) return;
+    if(!parser_expect(p, T_ID, node)) return;
+    if(!parser_expect(p, T_COL, node)) return;
+    rule_type(p, node);
 }
 
-void rule_param_list(Parser *p){
+void rule_param_list(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_ID)){
-        rule_param(p);
-        rule_param_list_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_PARAM_LIST_1);
+        if (!node) return;
+        rule_param(p, node);
+        rule_param_list_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_PARAM_LIST_2);
     }
 }
 
-void rule_param_list_rest(Parser *p){
+void rule_param_list_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
-        parser_expect(p, T_COMMA, NULL);
-        rule_param_list(p);
+        tree_node_t *node = add_node(p, parent, RULE_PARAM_LIST_REST_1);
+        if (!node) return;
+        parser_expect(p, T_COMMA, node);
+        rule_param_list(p, node);
+    }else{
+        add_node(p, parent, RULE_PARAM_LIST_REST_2);
     }
 }
 
-void rule_optional_type(Parser *p){
+void rule_optional_type(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COL)){
-        parser_expect(p, T_COL, NULL);
-        rule_type(p);
+        tree_node_t *node = add_node(p, parent, RULE_OPTIONAL_TYPE_1);
+        if (!node) return;
+        parser_expect(p, T_COL, node);
+        rule_type(p, node);
+    }else{
+        add_node(p, parent, RULE_OPTIONAL_TYPE_2);
     }
 }
 
-void rule_func_type_params(Parser *p){
+void rule_func_type_params(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(first_type(p)){
-        rule_type(p);
-        rule_func_type_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_FUNC_TYPE_PARAMS_1);
+        if (!node) return;
+        rule_type(p, node);
+        rule_func_type_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_FUNC_TYPE_PARAMS_2);
     }
 }
 
-void rule_func_type_rest(Parser *p){
+void rule_func_type_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
-        parser_expect(p, T_COMMA, NULL);
-        rule_type(p);
-        rule_func_type_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_FUNC_TYPE_REST_1);
+        if (!node) return;
+        parser_expect(p, T_COMMA, node);
+        rule_type(p, node);
+        rule_func_type_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_FUNC_TYPE_REST_2);
     }
 }
 
-void rule_rhs(Parser *p){
+void rule_rhs(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_LF)){
-        rule_block(p);
+        node = add_node(p, parent, RULE_RHS_1);
+        if (node) rule_block(p, node);
         return;
     }
 
-    rule_value(p);
+    node = add_node(p, parent, RULE_RHS_2);
+    if (node) rule_value(p, node);
 }
 
-void rule_block(Parser *p){
+void rule_block(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, T_LF, NULL);
-    parser_expect(p, T_INDENT, NULL);
-    rule_statement_list(p);
-    parser_expect(p, T_DEDENT, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_BLOCK);
+    if (!node) return;
+    parser_expect(p, T_LF, node);
+    parser_expect(p, T_INDENT, node);
+    rule_statement_list(p, node);
+    parser_expect(p, T_DEDENT, node);
 }
 
-void rule_statement_list(Parser *p){
+void rule_statement_list(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    rule_statement_line(p);
-    rule_statement_list_rest(p);
+    tree_node_t *node = add_node(p, parent, RULE_STATEMENT_LIST);
+    if (!node) return;
+    rule_statement_line(p, node);
+    rule_statement_list_rest(p, node);
 }
 
 bool first_statement_line_rest(Parser *p){
-    if(parser_check(p, KW_VAR) || 
+    if(parser_check(p, KW_VAR) ||
         parser_check(p, KW_VAL) ||
         parser_check(p, KW_RETURN) ||
         parser_check(p, KW_IF) ||
@@ -327,102 +436,136 @@ bool first_expression_noid(Parser *p){
     return false;
 }
 
-void rule_statement_list_rest(Parser *p){
+void rule_statement_list_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(first_statement_line_rest(p)){
-        rule_statement_line(p);
-        rule_statement_list_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_STATEMENT_LIST_REST_1);
+        if (!node) return;
+        rule_statement_line(p, node);
+        rule_statement_list_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_STATEMENT_LIST_REST_2);
     }
 }
 
-void rule_statement_line(Parser *p){
+void rule_statement_line(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    rule_statement(p);
-    rule_statement_line_rest(p);
+    tree_node_t *node = add_node(p, parent, RULE_STATEMENT_LINE);
+    if (!node) return;
+    rule_statement(p, node);
+    rule_statement_line_rest(p, node);
 }
 
-void rule_statement_line_rest(Parser *p){
+void rule_statement_line_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_SEMIC)){
-        parser_expect(p, T_SEMIC, NULL);
-        rule_statement(p);
-        rule_statement_line_rest(p);
+        node = add_node(p, parent, RULE_STATEMENT_LINE_REST_1);
+        if (!node) return;
+        parser_expect(p, T_SEMIC, node);
+        rule_statement(p, node);
+        rule_statement_line_rest(p, node);
         return;
     }
 
-    parser_expect(p, T_LF, NULL);
+    node = add_node(p, parent, RULE_STATEMENT_LINE_REST_2);
+    if (node) parser_expect(p, T_LF, node);
 }
 
-void rule_statement(Parser *p){
+void rule_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, KW_VAR) || parser_check(p, KW_VAL)){
-        rule_var_definition(p);
+        node = add_node(p, parent, RULE_STATEMENT_1);
+        if (node) rule_var_definition(p, node);
         return;
     }
 
-    rule_inline_statement(p);
+    node = add_node(p, parent, RULE_STATEMENT_2);
+    if (node) rule_inline_statement(p, node);
 }
 
-void rule_inline_statement(Parser *p){
+void rule_inline_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, KW_RETURN)){
-        rule_return_statement(p);
+        node = add_node(p, parent, RULE_INLINE_STATEMENT_1);
+        if (node) rule_return_statement(p, node);
         return;
     }
     if(parser_check(p, KW_IF)){
-        rule_if_statement(p);
+        node = add_node(p, parent, RULE_INLINE_STATEMENT_2);
+        if (node) rule_if_statement(p, node);
         return;
     }
     if(parser_check(p, KW_WHILE)){
-        rule_while_statement(p);
+        node = add_node(p, parent, RULE_INLINE_STATEMENT_3);
+        if (node) rule_while_statement(p, node);
         return;
     }
     if(parser_check(p, KW_FOR)){
-        rule_for_statement(p);
+        node = add_node(p, parent, RULE_INLINE_STATEMENT_4);
+        if (node) rule_for_statement(p, node);
         return;
     }
     if(parser_check(p, T_ID)){
-        parser_expect(p, T_ID, NULL);
-        rule_id_statement(p);
+        node = add_node(p, parent, RULE_INLINE_STATEMENT_5);
+        if (!node) return;
+        parser_expect(p, T_ID, node);
+        rule_id_statement(p, node);
         return;
     }
 
+    node = add_node(p, parent, RULE_INLINE_STATEMENT_6);
+    if (!node) return;
     //TODO expression_noid
-    rule_match_suffix(p);
+    rule_match_suffix(p, node);
 }
 
-void rule_var_definition(Parser *p){
+void rule_var_definition(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    rule_var_kind(p);
-    parser_expect(p, T_ID, NULL);
-    rule_optional_type(p);
-    parser_expect(p, T_EQU_SIGN, NULL);
-    rule_rhs(p);
+    tree_node_t *node = add_node(p, parent, RULE_VAR_DEFINITION);
+    if (!node) return;
+    rule_var_kind(p, node);
+    parser_expect(p, T_ID, node);
+    rule_optional_type(p, node);
+    parser_expect(p, T_EQU_SIGN, node);
+    rule_rhs(p, node);
 }
 
-void rule_var_kind(Parser *p){
+void rule_var_kind(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if (parser_check(p, KW_VAR)){
-        parser_expect(p, KW_VAR, NULL);
+        node = add_node(p, parent, RULE_VAR_KIND_2);
+        if (node) parser_expect(p, KW_VAR, node);
         return;
     }
-    parser_expect(p, KW_VAL, NULL);
+    node = add_node(p, parent, RULE_VAR_KIND_1);
+    if (node) parser_expect(p, KW_VAL, node);
 }
 
-void rule_id_statement(Parser *p){
+void rule_id_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_EQU_SIGN)){
-        parser_expect(p, T_EQU_SIGN, NULL);
-        rule_rhs(p);
+        node = add_node(p, parent, RULE_ID_STATEMENT_1);
+        if (!node) return;
+        parser_expect(p, T_EQU_SIGN, node);
+        rule_rhs(p, node);
+        return;
     }
-    //TODO finish after expression after id
+    add_node(p, parent, RULE_ID_STATEMENT_2);
+    //TODO finish after expression after id (deti pridat do node)
 }
 
 
-void rule_return_statement(Parser *p){
+void rule_return_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_RETURN, NULL);
-    rule_return_value(p);
+    tree_node_t *node = add_node(p, parent, RULE_RETURN_STATEMENT);
+    if (!node) return;
+    parser_expect(p, KW_RETURN, node);
+    rule_return_value(p, node);
 }
 
 bool follow_return_value(Parser *p){
@@ -436,205 +579,274 @@ bool follow_return_value(Parser *p){
     return false;
 }
 
-void rule_return_value(Parser *p){
+void rule_return_value(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(!follow_return_value(p)){
-        rule_value(p);
+        tree_node_t *node = add_node(p, parent, RULE_RETURN_VALUE_1);
+        if (node) rule_value(p, node);
+    }else{
+        add_node(p, parent, RULE_RETURN_VALUE_2);
     }
 }
 
-void rule_if_statement(Parser *p){
+void rule_if_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_IF, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_IF_STATEMENT);
+    if (!node) return;
+    parser_expect(p, KW_IF, node);
     //TODO expression
-    parser_expect(p, KW_THEN, NULL);
-    rule_body(p);
-    rule_else_part(p);
+    parser_expect(p, KW_THEN, node);
+    rule_body(p, node);
+    rule_else_part(p, node);
 }
 
-void rule_else_part(Parser *p){
+void rule_else_part(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_ELSE)){
-        parser_expect(p, KW_ELSE, NULL);
-        rule_body(p);
+        tree_node_t *node = add_node(p, parent, RULE_ELSE_PART_1);
+        if (!node) return;
+        parser_expect(p, KW_ELSE, node);
+        rule_body(p, node);
+    }else{
+        add_node(p, parent, RULE_ELSE_PART_2);
     }
 }
 
-void rule_while_statement(Parser *p){
+void rule_while_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_WHILE, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_WHILE_STATEMENT);
+    if (!node) return;
+    parser_expect(p, KW_WHILE, node);
     //TODO expression
-    parser_expect(p, KW_DO, NULL);
-    rule_body(p);
+    parser_expect(p, KW_DO, node);
+    rule_body(p, node);
 }
 
-void rule_body(Parser *p){
+void rule_body(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_LF)){
-        rule_block(p);
+        node = add_node(p, parent, RULE_BODY_1);
+        if (node) rule_block(p, node);
         return;
     }
     if(parser_check(p, T_MINUS) || parser_check(p, T_NEG)){
-        //TODO expression_unary
+        add_node(p, parent, RULE_BODY_3);
+        //TODO expression_unary (deti pridat do node)
         return;
     }
 
-    rule_inline_statement(p);
+    node = add_node(p, parent, RULE_BODY_2);
+    if (node) rule_inline_statement(p, node);
 }
 
-void rule_for_statement(Parser *p){
+void rule_for_statement(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_FOR, NULL);
-    rule_for_header(p);
-    parser_expect(p, KW_DO, NULL);
-    rule_body(p);
+    tree_node_t *node = add_node(p, parent, RULE_FOR_STATEMENT);
+    if (!node) return;
+    parser_expect(p, KW_FOR, node);
+    rule_for_header(p, node);
+    parser_expect(p, KW_DO, node);
+    rule_body(p, node);
 }
 
-void rule_for_header(Parser *p){
+void rule_for_header(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_LF)){
-        parser_expect(p, T_LF, NULL);
-        parser_expect(p, T_INDENT, NULL);
-        rule_generator(p);
-        rule_inline_guards(p);
-        parser_expect(p, T_LF, NULL);
-        rule_guard_lines(p);
-        parser_expect(p, T_DEDENT, NULL);
+        node = add_node(p, parent, RULE_FOR_HEADER_2);
+        if (!node) return;
+        parser_expect(p, T_LF, node);
+        parser_expect(p, T_INDENT, node);
+        rule_generator(p, node);
+        rule_inline_guards(p, node);
+        parser_expect(p, T_LF, node);
+        rule_guard_lines(p, node);
+        parser_expect(p, T_DEDENT, node);
         return;
     }
 
-    rule_generator(p);
-    rule_inline_guards(p);
+    node = add_node(p, parent, RULE_FOR_HEADER_1);
+    if (!node) return;
+    rule_generator(p, node);
+    rule_inline_guards(p, node);
 }
 
-void rule_generator(Parser *p){
+void rule_generator(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, T_ID, NULL);
-    parser_expect(p, T_ASSIG, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_GENERATOR);
+    if (!node) return;
+    parser_expect(p, T_ID, node);
+    parser_expect(p, T_ASSIG, node);
     //TODO expression
-    rule_range_op(p);
+    rule_range_op(p, node);
     //TODO expression
-    rule_step(p);
+    rule_step(p, node);
 }
 
-void rule_range_op(Parser *p){
+void rule_range_op(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, KW_UNTIL)){
-        parser_expect(p, KW_UNTIL, NULL);
+        node = add_node(p, parent, RULE_RANGE_OP_2);
+        if (node) parser_expect(p, KW_UNTIL, node);
         return;
     }
 
-    parser_expect(p, KW_TO, NULL);
+    node = add_node(p, parent, RULE_RANGE_OP_1);
+    if (node) parser_expect(p, KW_TO, node);
 }
 
-void rule_step(Parser *p){
+void rule_step(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_BY)){
-        parser_expect(p, KW_BY, NULL);
+        tree_node_t *node = add_node(p, parent, RULE_STEP_1);
+        if (!node) return;
+        parser_expect(p, KW_BY, node);
         //TODO expression
+    }else{
+        add_node(p, parent, RULE_STEP_2);
     }
 }
 
-void rule_inline_guards(Parser *p){
+void rule_inline_guards(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
-        parser_expect(p, KW_IF, NULL);
+        tree_node_t *node = add_node(p, parent, RULE_INLINE_GUARDS_1);
+        if (!node) return;
+        parser_expect(p, KW_IF, node);
         //TODO expression
-        rule_inline_guards(p);
+        rule_inline_guards(p, node);
+    }else{
+        add_node(p, parent, RULE_INLINE_GUARDS_2);
     }
 }
 
-void rule_guard_lines(Parser *p){
+void rule_guard_lines(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
-        parser_expect(p, KW_IF, NULL);
+        tree_node_t *node = add_node(p, parent, RULE_GUARD_LINES_1);
+        if (!node) return;
+        parser_expect(p, KW_IF, node);
         //TODO expression
-        rule_inline_guards(p);
-        parser_expect(p, T_LF, NULL);
-        rule_guard_lines(p);
+        rule_inline_guards(p, node);
+        parser_expect(p, T_LF, node);
+        rule_guard_lines(p, node);
+    }else{
+        add_node(p, parent, RULE_GUARD_LINES_2);
     }
 }
 
-void rule_value(Parser *p){
+void rule_value(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, KW_IF)){
-        rule_if_statement(p);
+        node = add_node(p, parent, RULE_VALUE_1);
+        if (node) rule_if_statement(p, node);
         return;
     }
 
+    node = add_node(p, parent, RULE_VALUE_2);
+    if (!node) return;
     //TODO value_expression
-    rule_match_suffix(p);
+    rule_match_suffix(p, node);
 }
 
-void rule_match_suffix(Parser *p){
+void rule_match_suffix(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_MATCH)){
-        parser_expect(p, KW_MATCH, NULL);
-        parser_expect(p, T_LF, NULL);
-        parser_expect(p, T_INDENT, NULL);
-        rule_case_list(p);
-        parser_expect(p, T_DEDENT, NULL);
+        tree_node_t *node = add_node(p, parent, RULE_MATCH_SUFFIX_1);
+        if (!node) return;
+        parser_expect(p, KW_MATCH, node);
+        parser_expect(p, T_LF, node);
+        parser_expect(p, T_INDENT, node);
+        rule_case_list(p, node);
+        parser_expect(p, T_DEDENT, node);
+    }else{
+        add_node(p, parent, RULE_MATCH_SUFFIX_2);
     }
 }
 
-void rule_case_list(Parser *p){
+void rule_case_list(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    rule_case_clause(p);
-    rule_case_list_rest(p);
+    tree_node_t *node = add_node(p, parent, RULE_CASE_LIST);
+    if (!node) return;
+    rule_case_clause(p, node);
+    rule_case_list_rest(p, node);
 }
 
-void rule_case_list_rest(Parser *p){
+void rule_case_list_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_CASE)){
-        rule_case_clause(p);
-        rule_case_list_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_CASE_LIST_REST_1);
+        if (!node) return;
+        rule_case_clause(p, node);
+        rule_case_list_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_CASE_LIST_REST_2);
     }
 }
 
-void rule_case_clause(Parser *p){
+void rule_case_clause(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
-    parser_expect(p, KW_CASE, NULL);
-    rule_pattern(p);
-    rule_case_guard(p);
-    parser_expect(p, T_LAMB, NULL);
-    rule_rhs(p);
-    parser_expect(p, T_LF, NULL);
+    tree_node_t *node = add_node(p, parent, RULE_CASE_CLAUSE);
+    if (!node) return;
+    parser_expect(p, KW_CASE, node);
+    rule_pattern(p, node);
+    rule_case_guard(p, node);
+    parser_expect(p, T_LAMB, node);
+    rule_rhs(p, node);
+    parser_expect(p, T_LF, node);
 }
 
-void rule_case_guard(Parser *p){
+void rule_case_guard(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, KW_IF)){
-        parser_expect(p, KW_IF, NULL);
+        tree_node_t *node = add_node(p, parent, RULE_CASE_GUARD_1);
+        if (!node) return;
+        parser_expect(p, KW_IF, node);
         //TODO expression
+    }else{
+        add_node(p, parent, RULE_CASE_GUARD_2);
     }
 }
 
-void rule_pattern(Parser *p){
+void rule_pattern(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_REPRESPATTERN)){
-        parser_expect(p, T_REPRESPATTERN, NULL);
+        node = add_node(p, parent, RULE_PATTERN_1);
+        if (node) parser_expect(p, T_REPRESPATTERN, node);
         return;
     }
     if(parser_check(p, T_ID)){
-        parser_expect(p, T_ID, NULL);
-        rule_id_pattern(p);
+        node = add_node(p, parent, RULE_PATTERN_2);
+        if (!node) return;
+        parser_expect(p, T_ID, node);
+        rule_id_pattern(p, node);
         return;
     }
 
-    rule_literal_pattern(p);
+    node = add_node(p, parent, RULE_PATTERN_3);
+    if (node) rule_literal_pattern(p, node);
 }
 
-void rule_id_pattern(Parser *p){
+void rule_id_pattern(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_COL)){
-        parser_expect(p, T_COL, NULL);
-        rule_type(p);
+        node = add_node(p, parent, RULE_ID_PATTERN_1);
+        if (!node) return;
+        parser_expect(p, T_COL, node);
+        rule_type(p, node);
         return;
     }
 
-    parser_expect(p, T_LPARENTH, NULL);
-    rule_subpattern_list(p);
-    parser_expect(p, T_RPARENTH, NULL);
+    node = add_node(p, parent, RULE_ID_PATTERN_2);
+    if (!node) return;
+    parser_expect(p, T_LPARENTH, node);
+    rule_subpattern_list(p, node);
+    parser_expect(p, T_RPARENTH, node);
 }
 
 bool first_literal_pattern(Parser *p){
@@ -659,76 +871,100 @@ bool first_subpattern(Parser *p){
     return false;
 }
 
-void rule_subpattern_list(Parser *p){
+void rule_subpattern_list(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(first_subpattern(p)){
-        rule_subpattern(p);
-        rule_subpattern_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_SUBPATTERN_LIST_1);
+        if (!node) return;
+        rule_subpattern(p, node);
+        rule_subpattern_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_SUBPATTERN_LIST_2);
     }
 }
 
-void rule_subpattern_rest(Parser *p){
+void rule_subpattern_rest(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     if(parser_check(p, T_COMMA)){
-        parser_expect(p, T_COMMA, NULL);
-        rule_subpattern(p);
-        rule_subpattern_rest(p);
+        tree_node_t *node = add_node(p, parent, RULE_SUBPATTERN_REST_1);
+        if (!node) return;
+        parser_expect(p, T_COMMA, node);
+        rule_subpattern(p, node);
+        rule_subpattern_rest(p, node);
+    }else{
+        add_node(p, parent, RULE_SUBPATTERN_REST_2);
     }
 }
 
-void rule_subpattern(Parser *p){
+void rule_subpattern(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_ID)){
-        parser_expect(p, T_ID, NULL);
+        node = add_node(p, parent, RULE_SUBPATTERN_1);
+        if (node) parser_expect(p, T_ID, node);
         return;
     }
     if(parser_check(p, T_REPRESPATTERN)){
-        parser_expect(p, T_REPRESPATTERN, NULL);
+        node = add_node(p, parent, RULE_SUBPATTERN_2);
+        if (node) parser_expect(p, T_REPRESPATTERN, node);
         return;
     }
 
-    rule_literal_pattern(p);
+    node = add_node(p, parent, RULE_SUBPATTERN_3);
+    if (node) rule_literal_pattern(p, node);
 }
 
-void rule_literal_pattern(Parser *p){
+void rule_literal_pattern(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_INT)){
-        parser_expect(p, T_INT, NULL);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_1);
+        if (node) parser_expect(p, T_INT, node);
         return;
     }
     if(parser_check(p, T_DOUBLE)){
-        parser_expect(p, T_DOUBLE, NULL);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_2);
+        if (node) parser_expect(p, T_DOUBLE, node);
         return;
     }
     if(parser_check(p, T_STRING)){
-        parser_expect(p, T_STRING, NULL);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_3);
+        if (node) parser_expect(p, T_STRING, node);
         return;
     }
     if(parser_check(p, KW_TRUE)){
-        parser_expect(p, KW_TRUE, NULL);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_4);
+        if (node) parser_expect(p, KW_TRUE, node);
         return;
     }
     if(parser_check(p, KW_FALSE)){
-        parser_expect(p, KW_FALSE, NULL);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_4);
+        if (node) parser_expect(p, KW_FALSE, node);
         return;
     }
     if(parser_check(p, T_MINUS)){
-        parser_expect(p, T_MINUS, NULL);
-        rule_number(p);
+        node = add_node(p, parent, RULE_LITERAL_PATTERN_5);
+        if (!node) return;
+        parser_expect(p, T_MINUS, node);
+        rule_number(p, node);
         return;
     }
 
-    parser_expect(p, T_UNIT_BRACKETS, NULL); // '(' ')' chodi zo scannera ako jeden token
+    node = add_node(p, parent, RULE_LITERAL_PATTERN_6);
+    if (node) parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
 }
 
-void rule_number(Parser *p){
+void rule_number(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
+    tree_node_t *node;
     if(parser_check(p, T_INT)){
-        parser_expect(p, T_INT, NULL);
+        node = add_node(p, parent, RULE_NUMBER_1);
+        if (node) parser_expect(p, T_INT, node);
         return;
     }
 
-    parser_expect(p, T_DOUBLE, NULL);
+    node = add_node(p, parent, RULE_NUMBER_2);
+    if (node) parser_expect(p, T_DOUBLE, node);
 }
 
 
@@ -799,14 +1035,15 @@ bool parser_advance(Parser *p) {
         return false;
     }
     if (p->current.type == T_EOF) {
-        return true;    
+        return true;
     }
     free(p->current.data);
     p->current.data = NULL;
     return fetch_token(p);
 }
 
-bool parser_expect(Parser *p, t_type type, tree_node_t **out) {
+// Consumes the expected token and attaches it as a leaf to parent
+bool parser_expect(Parser *p, t_type type, tree_node_t *parent) {
     if (p->error != PARSE_OK) {
         return false;
     }
@@ -815,19 +1052,13 @@ bool parser_expect(Parser *p, t_type type, tree_node_t **out) {
         return false;
     }
 
-    if (out) {
-        *out = tree_create_terminal(&p->current);
-        if (!*out) {
-            p->error = PARSE_ERR_INTERNAL;
-            return false;
-        }
-    }
-
-    if (!parser_advance(p)) {
-        if (out) {
-            tree_dispose(out);
-        }
+    // leaf must be created before advance, which frees current.data
+    tree_node_t *leaf = tree_create_terminal(&p->current);
+    if (!leaf || !tree_add_child(parent, leaf)) {
+        tree_dispose(&leaf);
+        p->error = PARSE_ERR_INTERNAL;
         return false;
     }
-    return true;
+
+    return parser_advance(p);
 }

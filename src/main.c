@@ -22,10 +22,12 @@ int main(int argc, char *argv[]){
 
     // SA starts here
 
-    handle_tokens(&parser);
+    tree_node_t *root = handle_tokens(&parser);
+    tree_print(root, stderr);
 
 
     int result = parser.error;
+    tree_dispose(&root);
     parser_free(&parser);
     if(src != stdin){
         fclose(src);
