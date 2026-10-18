@@ -147,6 +147,9 @@ typedef enum {
     RULE_EXPRESSION_AFTER_ID,
     RULE_EXPRESSION_NOID,
     RULE_EXPRESSION_UNARY,
+    // helper nonterminals
+    RULE_LEADING_EOL_1,
+    RULE_LEADING_EOL_2,
     RULE_COUNT
 } tree_rule_t;
 

@@ -91,6 +91,11 @@ typedef enum{
 
     T_INDENT, //61
     T_DEDENT, //62
+
+    //CONTROL
+    KW_TO,      //to
+    KW_BY,    //by
+    KW_UNTIL,   //until
 }t_type;
 
 typedef struct{
@@ -129,9 +134,9 @@ static const KeyWord keywords[] = {
     {"List",KW_LIST},
     {"match",KW_MATCH},
     {"type",KW_TYPE},
-    {"until",KW_UNTIL},
     {"to",KW_TO},
-    {"from",KW_FROM},
+    {"by",KW_BY},
+    {"until",KW_UNTIL},
     {NULL, T_ID}
 };
 
