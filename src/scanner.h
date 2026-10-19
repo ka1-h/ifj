@@ -33,7 +33,7 @@ typedef enum{
     KW_MATCH,
     KW_TYPE,
     KW_TO,
-    KW_FROM,
+    KW_BY,
     KW_UNTIL,
 
     T_INT,      //int
@@ -91,11 +91,6 @@ typedef enum{
 
     T_INDENT, //61
     T_DEDENT, //62
-
-    //CONTROL
-    KW_TO,      //to
-    KW_BY,    //by
-    KW_UNTIL,   //until
 }t_type;
 
 typedef struct{
