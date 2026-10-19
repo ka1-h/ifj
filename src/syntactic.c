@@ -970,6 +970,9 @@ void rule_number(Parser *p, tree_node_t *parent){
 
 // Reads the next token that is not whitespace into p->current
 bool fetch_token(Parser *p) {
+    // type of the previous token 
+    bool after_lf = (p->current.type == T_LF);
+    bool skip;
     do {
         int res = get_token(p->src, &p->current, &p->buffer, &p->dent, &p->processed,
                             &p->pos, p->pole_dent, &p->mul_de);
@@ -981,7 +984,10 @@ bool fetch_token(Parser *p) {
             }
             return false;
         }
-        if (p->current.type == T_SPACE) {
+        // whitespace is always skipped, T_LF only right after another T_LF
+        skip = p->current.type == T_SPACE ||
+               (after_lf && p->current.type == T_LF);
+        if (skip) {
             free(p->current.data);
             p->current.data = NULL;
         }
@@ -990,7 +996,7 @@ bool fetch_token(Parser *p) {
                     p->current.type, p->current.line,
                     p->current.data ? p->current.data : "NULL");
         #endif
-    } while (p->current.type == T_SPACE);
+    } while (skip);
 
 
 
