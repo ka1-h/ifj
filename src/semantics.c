@@ -1,5 +1,6 @@
 
 #include "semantics.h"
+#include "symtable.h"
 
 
 
@@ -26,37 +27,75 @@ static int semantic_check_main_params(const tree_node_t *node) {
 }
 
 
+//get type from type node
+static DataType semantic_get_type(const tree_node_t *node) {
+    
+    if (node == NULL || node->type!=NODE_NONTERMINAL) {
+        return TYPE_UNDEF;
+    }
+
+    
+    if (node->rule != RULE_TYPE_1) {
+        return TYPE_UNDEF;
+    }
+
+
+    if (node->children[1]->rule == RULE_UNION_REST_1) {
+        return TYPE_UNDEF;
+    }
+
+
+    const tree_node_t *simple_type = node->children[0];
+
+    switch (simple_type->rule) {
+        case RULE_SIMPLE_TYPE_1:
+            return TYPE_INT;
+
+        case RULE_SIMPLE_TYPE_2:
+            return TYPE_DOUBLE;
+
+        case RULE_SIMPLE_TYPE_3:
+            return TYPE_STRING;
+
+        case RULE_SIMPLE_TYPE_4:
+            return TYPE_UNIT;
+
+        case RULE_SIMPLE_TYPE_5:
+            return TYPE_BOOL;
+
+        default:
+            return TYPE_UNDEF;
+    }
+}
+
+
 //check return type of main
 static int semantic_check_main_type(const tree_node_t *node) {
+    
     
     if (node->rule == RULE_OPTIONAL_TYPE_2) {
         return 0;
     }
 
-    const tree_node_t *type = node->children[1];
+    const tree_node_t *type_node = node->children[1];
 
-   
-    if (type->rule == RULE_TYPE_2) {
+    //function type cant be unit
+    if (type_node->rule == RULE_TYPE_2) {
         return 6;
     }
 
+    DataType type = semantic_get_type(type_node);
+
     
-    if (type->children[1]->rule == RULE_UNION_REST_1) {
+    if (type == TYPE_UNDEF) {
         return 0;
     }
 
-    const tree_node_t *simple_type = type->children[0];
-
-    switch (simple_type->rule) {
-        case RULE_SIMPLE_TYPE_1: //int
-        case RULE_SIMPLE_TYPE_2: //double
-        case RULE_SIMPLE_TYPE_3: //string
-        case RULE_SIMPLE_TYPE_5: //bool
-            return 6;
-
-        default:
-            return 0;
+    if (type != TYPE_UNIT) {
+        return 6;
     }
+
+    return 0;
 }
 
 
