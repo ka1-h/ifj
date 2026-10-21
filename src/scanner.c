@@ -2,6 +2,7 @@
 #include "scanner.h"
 
 int line_now = 1;
+bool gap = false, next_lf = false, found_com_lf = false;
 
 void buffer_init(Buffer *buf){
     buf->length = 0;
@@ -72,7 +73,6 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
     State state = S_START;
     int c = -1, left = 0, right = 0, res = 0;
     bool exponent = false, has_d = false, has_end = false;
-
     if(!(*processed)){
         res = what_dent(*dent, pos, pole_dent);
         if(res == 1){
@@ -97,6 +97,13 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
             case S_START:
                 token->line = line_now;
                 if(c == EOF){
+                    if(pole_dent[*pos] != 0){
+                        what_dent(*dent, pos, pole_dent);
+                        ungetc(c, src);
+                        token->type = T_DEDENT;
+                        buffer_clear(buffer);
+                        return 0;
+                    }
                     token->type = T_EOF;
                     buffer_clear(buffer);
                     return 0;
@@ -293,9 +300,18 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }
             case S_ZERO:
                 if(isdigit(c)){
-                    break;
+                    buffer_clear(buffer);
+                    return 1;
                 }else if(c == '_'){
                     state = S_ZERO_UNDER;
+                    break;
+                }else if(c == '.'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else if(c == 'e' || c == 'E'){
+                    buffer_append(buffer, (char)c);
+                    state = S_EXP;
                     break;
                 }else{
                     ungetc(c, src);
@@ -832,8 +848,14 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }
             case S_LF:
                 if(c == 10){
-                    if(pole_dent[*pos] != 0 && *mul_de == false){
+                    if(next_lf){
+                        next_lf = false;
+                        ungetc(c, src);
+                        return 0;
+                    }else if(pole_dent[*pos] != 0 && *mul_de == false && !gap){
                         *mul_de = true;
+                        gap = true;
+                        next_lf = true;
                         ungetc(c, src);
                         token->type = T_LF;
                         return 0;
@@ -848,8 +870,13 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }else if(c == ' '){
                     (*dent)++;
                     break;
+                }else if(c == '/'){
+                    ungetc(c, src);
+                    token->type = T_LF;
+                    buffer_clear(buffer);
+                    return 0;
                 }else{
-                    if(pole_dent[*pos] != 0 && *mul_de == true){
+                    if(pole_dent[*pos] != 0 && *mul_de == true && gap == false){
                         //printf("%d\n", (*dent));
                         //printf("%d\n", pole_dent[*pos]);
                         if(pole_dent[*pos] <= (*dent)){
@@ -885,6 +912,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                         token->type = T_LF;
                         buffer_clear(buffer);
                         *processed = false;
+                        gap = true;
                         return 0;
                     }
                 }
