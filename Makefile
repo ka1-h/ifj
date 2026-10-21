@@ -1,20 +1,12 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c11 -g
 
-OBJS = main.o scanner.o
+SRC = $(wildcard src/*.c)
 
 TARGET = ifj
 
-all: $(TARGET)
-
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
-
-main.o: main.c scanner.h
-	$(CC) $(CFLAGS) -c main.c
-
-scanner.o: scanner.c scanner.h
-	$(CC) $(CFLAGS) -c scanner.c
+all:
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 lex_test: $(TARGET)
 	cd test_skripts && ./lex_test.sh
@@ -22,6 +14,6 @@ lex_test: $(TARGET)
 test: lex_test
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(TARGET)
 
-.PHONY: all clean lex_test test
+.PHONY: all clean

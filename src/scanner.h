@@ -32,6 +32,9 @@ typedef enum{
     KW_LIST, //pravdepodobne netreba spracovat v nasom pripade
     KW_MATCH,
     KW_TYPE,
+    KW_TO,
+    KW_BY,
+    KW_UNTIL,
 
     T_INT,      //int
     T_DOUBLE,   //double
@@ -126,6 +129,9 @@ static const KeyWord keywords[] = {
     {"List",KW_LIST},
     {"match",KW_MATCH},
     {"type",KW_TYPE},
+    {"to",KW_TO},
+    {"by",KW_BY},
+    {"until",KW_UNTIL},
     {NULL, T_ID}
 };
 
