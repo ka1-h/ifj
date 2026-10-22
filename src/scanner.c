@@ -76,11 +76,15 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
     if(!(*processed)){
         res = what_dent(*dent, pos, pole_dent);
         if(res == 1){
+            *mul_de = true;
             *dent = 0;
             *processed = true;
             token->type = T_INDENT;
             return 0;
         }else if(res == -1){
+            if(pole_dent[*pos] == 0){
+                *mul_de = false;
+            }
             token->type = T_DEDENT;
             return 0;
         }else if(res == 0){
@@ -268,7 +272,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     state = S_IFJ;
                     break;
                 }else{
-                    ungetc(c, src);     //returning unused char back to entry
+                    ungetc(c, src);
                     token->data = strdup(buffer->data);
                     token->type = T_ID;
                     is_keyword(token);
@@ -848,22 +852,9 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }
             case S_LF:
                 if(c == 10){
-                    if(next_lf){
-                        next_lf = false;
-                        ungetc(c, src);
-                        return 0;
-                    }else if(pole_dent[*pos] != 0 && *mul_de == false && !gap){
-                        *mul_de = true;
-                        gap = true;
-                        next_lf = true;
-                        ungetc(c, src);
-                        token->type = T_LF;
-                        return 0;
-                    }else{
-                        *dent = 0;
-                        line_now++;
-                        break;
-                    }
+                    line_now++;
+                    *dent = 0;
+                    break;
                 }else if(c == 9){
                     buffer_clear(buffer);
                     return 1;
@@ -871,48 +862,22 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     (*dent)++;
                     break;
                 }else if(c == '/'){
+                    *dent = 0;
                     ungetc(c, src);
                     token->type = T_LF;
                     buffer_clear(buffer);
+                    state = S_START;
                     return 0;
                 }else{
-                    if(pole_dent[*pos] != 0 && *mul_de == true && gap == false){
-                        //printf("%d\n", (*dent));
-                        //printf("%d\n", pole_dent[*pos]);
-                        if(pole_dent[*pos] <= (*dent)){
-                            ungetc(c, src);
-                            state = S_START;
-                            buffer_clear(buffer);
-                            *processed = true;
-                            break;
-                        }else{
-                            what_dent(*dent, pos, pole_dent);
-                            ungetc(c, src);
-                            token->type = T_DEDENT;
-                            *processed = false;
-                            if(pole_dent[*pos] == 0){
-                                *mul_de = false;
-                                *processed = true;
-                            }
-                            buffer_clear(buffer);
-                            return 0;
-                        }
-                        /*what_dent(*dent, pos, pole_dent);
-                        ungetc(c, src);
-                        token->type = T_DEDENT;
+                    ungetc(c, src);
+                    if(*dent != 0 || *mul_de == true){
                         *processed = false;
-                        if(pole_dent[*pos] == 0){
-                            *mul_de = false;
-                            *processed = true;
-                        }
-                        buffer_clear(buffer);
-                        return 0;*/
-                    }else{
-                        ungetc(c, src);
                         token->type = T_LF;
                         buffer_clear(buffer);
-                        *processed = false;
-                        gap = true;
+                        return 0;
+                    }else{
+                        token->type = T_LF;
+                        buffer_clear(buffer);
                         return 0;
                     }
                 }
