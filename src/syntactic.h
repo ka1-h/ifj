@@ -24,12 +24,20 @@ typedef struct {
     bool processed;
     bool mul_de;
 
-    Token current;      // the lookahead token, always valid after parser_init
+    // parentheses: inside them T_LF/T_INDENT/T_DEDENT are only whitespace
+    int paren_depth;        // current nesting depth of '(' ')'
+    int paren_base_pos;     // pos in pole_dent when the outermost '(' was opened
+    int paren_base_indent;  // indentation of the logical line with the outermost '('
+    bool paren_newline;     // a physical LF was skipped inside parentheses
+
+    t_type prev_type;  // type of the last consumed token (set in parser_advance)
+    Token current;     // the lookahead token, always valid after parser_init
     int error;          // PARSE_OK until something fails; first error sticks
 } Parser;
 
 tree_node_t *rule_program(Parser *p);
 void rule_leading_eol(Parser *p, tree_node_t *parent);
+void rule_line_end(Parser *p, tree_node_t *parent);
 void rule_prolog(Parser *p, tree_node_t *parent);
 void rule_top_list(Parser *p, tree_node_t *parent);
 void rule_top_item(Parser *p, tree_node_t *parent);

@@ -52,13 +52,26 @@ void rule_leading_eol(Parser *p, tree_node_t *parent){
     }
 }
 
+// LINE_END := EOL | eps , no tree node
+// eps only if the logical line already ended: lookahead EOF/DEDENT 
+// or the previous token was DEDENT (the line ended with a block)
+void rule_line_end(Parser *p, tree_node_t *parent){
+    if (p->error != PARSE_OK) return;
+    if(parser_check(p, T_LF)){
+        parser_expect(p, T_LF, parent);
+    }else if(!(parser_check(p, T_EOF) || parser_check(p, T_DEDENT) ||
+               p->prev_type == T_DEDENT)){
+        p->error = PARSE_ERR_SYNTAX;
+    }
+}
+
 void rule_prolog(Parser *p, tree_node_t *parent){
     if (p->error != PARSE_OK) return;
     tree_node_t *node = add_node(p, parent, RULE_PROLOG);
     if (!node) return;
     if (!parser_expect(p, KW_IMPORT, node)) return;
     if (!parser_expect(p, T_IFJ, node)) return;
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_top_list(Parser *p, tree_node_t *parent){
@@ -122,7 +135,7 @@ void rule_function_def(Parser *p, tree_node_t *parent){
 
     if (!parser_expect(p, T_EQU_SIGN, node)) return;
     rule_rhs(p, node);
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_type_def(Parser *p, tree_node_t *parent){
@@ -134,7 +147,7 @@ void rule_type_def(Parser *p, tree_node_t *parent){
     if (!parser_expect(p, T_EQU_SIGN, node)) return;
 
     rule_type(p, node);
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_type(Parser *p, tree_node_t *parent){
@@ -237,7 +250,7 @@ void rule_case_class_def(Parser *p, tree_node_t *parent){
         rule_param_list(p, node);
         parser_expect(p, T_RPARENTH, node);
     }
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_extension_def(Parser *p, tree_node_t *parent){
@@ -252,7 +265,7 @@ void rule_extension_def(Parser *p, tree_node_t *parent){
     parser_expect(p, T_INDENT, node);
     rule_method_list(p, node);
     parser_expect(p, T_DEDENT, node);
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_method_list(Parser *p, tree_node_t *parent){
@@ -469,7 +482,7 @@ void rule_statement_line_rest(Parser *p, tree_node_t *parent){
     }
 
     node = add_node(p, parent, RULE_STATEMENT_LINE_REST_2);
-    if (node) parser_expect(p, T_LF, node);
+    if (node) rule_line_end(p, node);
 }
 
 void rule_statement(Parser *p, tree_node_t *parent){
@@ -796,7 +809,7 @@ void rule_case_clause(Parser *p, tree_node_t *parent){
     rule_case_guard(p, node);
     parser_expect(p, T_LAMB, node);
     rule_rhs(p, node);
-    parser_expect(p, T_LF, node);
+    rule_line_end(p, node);
 }
 
 void rule_case_guard(Parser *p, tree_node_t *parent){
@@ -984,19 +997,61 @@ bool fetch_token(Parser *p) {
             }
             return false;
         }
-        // whitespace is always skipped, T_LF only right after another T_LF
-        skip = p->current.type == T_SPACE ||
-               (after_lf && p->current.type == T_LF);
-        if (skip) {
-            free(p->current.data);
-            p->current.data = NULL;
-        }
         #ifdef DEBUG_TOKENS
             fprintf(stderr, "Token: type = %d, line = %d and data = %s\n",
                     p->current.type, p->current.line,
                     p->current.data ? p->current.data : "NULL");
         #endif
+        // whitespace is always skipped, mutliple contiguous T_LF is skipped also
+        skip = p->current.type == T_SPACE ||
+               (after_lf && p->current.type == T_LF);
+
+        // inside parentheses a line break is only whitespace 
+        if (!skip && p->paren_depth > 0) {
+            t_type type = p->current.type;
+            if (type == T_LF || type == T_INDENT || type == T_DEDENT) {
+                if (type == T_LF) p->paren_newline = true;
+                skip = true;
+            } else if (p->paren_newline && type != T_EOF) {
+                // first token of a continuation line: all INDENT/DEDENT of this
+                // line were already processed
+                p->paren_newline = false;
+                int indent = p->pole_dent[p->pos];
+                bool ok = indent > p->paren_base_indent ||
+                          (type == T_RPARENTH && indent == p->paren_base_indent);
+                if (!ok) {
+                    free(p->current.data);
+                    p->current.data = NULL;
+                    if (p->error == PARSE_OK) {
+                        p->error = PARSE_ERR_LEX;
+                    }
+                    return false;
+                }
+            }
+        }
+
+        if (skip) {
+            free(p->current.data);
+            p->current.data = NULL;
+        }
     } while (skip);
+
+    if (p->current.type == T_LPARENTH) {
+        if (p->paren_depth == 0) {
+            p->paren_base_pos = p->pos;
+            p->paren_base_indent = p->pole_dent[p->pos];
+        }
+        p->paren_depth++;
+    } else if (p->current.type == T_RPARENTH && p->paren_depth > 0) {
+        p->paren_depth--;
+        if (p->paren_depth == 0) {
+            // drop indentation levels pushed by continuation lines, so the
+            // scanner continues as if the parentheses were on one line
+            p->pos = p->paren_base_pos;
+            p->mul_de = (p->pole_dent[p->pos] != 0);
+            p->paren_newline = false;
+        }
+    }
 
 
 
@@ -1012,6 +1067,11 @@ bool parser_init(Parser *p, FILE *src) {
     }
     p->processed = true;
     p->mul_de = false;
+    p->paren_depth = 0;
+    p->paren_base_pos = 0;
+    p->paren_base_indent = 0;
+    p->paren_newline = false;
+    p->prev_type = T_EOF; // nothing consumed yet, any type other than T_DEDENT
     p->current.type = T_EOF;
     p->current.data = NULL;
     p->current.line = 0;
@@ -1043,6 +1103,7 @@ bool parser_advance(Parser *p) {
     if (p->current.type == T_EOF) {
         return true;
     }
+    p->prev_type = p->current.type;
     free(p->current.data);
     p->current.data = NULL;
     return fetch_token(p);
