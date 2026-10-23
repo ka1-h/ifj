@@ -857,6 +857,10 @@ void rule_id_pattern(Parser *p, tree_node_t *parent){
 
     node = add_node(p, parent, RULE_ID_PATTERN_2);
     if (!node) return;
+    if(parser_check(p, T_UNIT_BRACKETS)){
+        parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
+        return;
+    }
     parser_expect(p, T_LPARENTH, node);
     rule_subpattern_list(p, node);
     parser_expect(p, T_RPARENTH, node);
