@@ -365,33 +365,17 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     return 1;
                 }
             case S_MINUS:
-                if(isdigit(c)){
-                    buffer_append(buffer, (char)c);
-                    if(c == '0'){
-                        state = S_ZERO;
-                    }else{
-                        state = S_INT;
-                    }
-                    break;
-                }else{
-                    ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_MINUS;
-                    buffer_clear(buffer);
-                    return 0;
-                }
+                ungetc(c, src);
+                token->data = strdup(buffer->data);
+                token->type = T_MINUS;
+                buffer_clear(buffer);
+                return 0;
             case S_PLUS:
-                if(isdigit(c)){
-                    buffer_append(buffer, (char)c);
-                    state = S_INT;
-                    break;
-                }else{
-                    ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_PLUS;
-                    buffer_clear(buffer);
-                    return 0;
-                }
+                ungetc(c, src);
+                token->data = strdup(buffer->data);
+                token->type = T_PLUS;
+                buffer_clear(buffer);
+                return 0;
             case S_DOT:
                 if(isdigit(c)){
                     buffer_append(buffer, (char)c);
@@ -804,7 +788,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 if(c == '&'){
                     buffer_append(buffer, (char)c);
                     token->data = strdup(buffer->data);
-                    token->type = T_NET;
+                    token->type = T_AND;
                     buffer_clear(buffer);
                     return 0;
                 }else{
