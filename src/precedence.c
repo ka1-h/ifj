@@ -1,24 +1,6 @@
-// vsetky tokeny: T_ID, T_STRING,T_INT, T_DOUBLE, T_UNIT_BRACKETS, T_LPARENTH, T_RPARENTH, T_PLUS, T_MINUS, T_MULT, T_DIV, T_LT, T_LOET
-// T_GT, T_GOET, T_ET, T_NET, KW_TRUE, KW_FALSE, T_NEG, T_AND, T_OR
-
-// priorita operatory     tokeny                          nazov skupiny
-// 1        unarne -, !   T_MINUS, T_NEG                  PREC_UNARY
-// 2        *, /          T_MULT, T_DIV                   PREC_MULDIV
-// 3        +, -          T_PLUS, T_MINUS                 PREC_ADD
-// 4        <, <=, >, >=  T_LT, T_LOET, T_GT, T_GOET      PREC_REL
-// 5        ==, !=        T_ET, T_NET                     PREC_EQ
-// 6        &&            T_AND                           PREC_AND
-// 7        ||            T_OR                            PREC_OR
-
-// termy: T_ID, T_STRING, T_INT, T_DOUBLE, T_UNIT_BRACKETS, KW_TRUE, KW_FALSE     PREC_TERM
-// T_LPARENTH                                                                     PREC_LPAR
-// T_RPARENTH                                                                     PREC_RPAR
-// $                                                                              PREC_DOLLAR
-
-// unary   muldiv   add    rel     eq      and     or
-//   =      <       
-
 #include "precedence.h"
+#include <stdlib.h>
+#include <string.h>
 
 typedef enum {
     PREC_UNARY, // unary -, !
@@ -73,4 +55,80 @@ static prec_group_t get_group(t_type type, bool expect_operand) {
         default:
             return PREC_DOLLAR;
     }
+}
+
+typedef enum {
+    ITEM_TERM, 
+    ITEM_NONTERM,
+    ITEM_MARK
+} item_kind_t;
+
+typedef struct {
+    item_kind_t kind;
+    prec_group_t group;
+    tree_node_t *node;
+} stack_item_t;
+
+typedef struct {
+    stack_item_t *items;
+    size_t count;
+    size_t capacity;
+} prec_stack_t;
+
+static bool stack_init(prec_stack_t *s) {
+    s->capacity = 16;
+    s->count = 0;
+    s->items = malloc(s->capacity * sizeof(stack_item_t));
+    if (!s->items) {
+        return false;
+    }
+    s->items[0] = (stack_item_t){ITEM_TERM, PREC_DOLLAR, NULL};
+    s->count = 1;
+    return true;
+}
+
+static bool stack_push(prec_stack_t *s, stack_item_t item) {
+    if (s->count == s->capacity) {
+        size_t new_capacity = s->capacity * 2;
+        stack_item_t *tmp = realloc(s->items, new_capacity * sizeof(stack_item_t));
+        if (!tmp) {
+            return false;
+        } 
+        s->items = tmp;
+        s->capacity = new_capacity;
+    }
+    s->items[s->count++] = item;
+    return true;
+}
+
+static size_t stack_top_terminal(const prec_stack_t *s) {
+    size_t i = s->count;
+    while (i > 0) {
+        i--;
+        if (s->items[i].kind == ITEM_TERM) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+// < - start of handle
+static bool stack_insert_mark(prec_stack_t *s, size_t pos) {
+    if (!stack_push(s, (stack_item_t){ITEM_MARK, PREC_DOLLAR, NULL})) {
+        return false;
+    }
+    size_t move = s->count - 1 - (pos + 1);
+    memmove(&s->items[pos + 2], &s->items[pos + 1], move * sizeof(stack_item_t));
+    s->items[pos + 1] = (stack_item_t){ITEM_MARK, PREC_DOLLAR, NULL};
+    return true;   
+}
+
+static void stack_free(prec_stack_t *s) {
+    for (size_t i = 0; i < s->count; i++) {
+        tree_dispose(&s->items[i].node);
+    }
+    free(s->items);
+    s->items = NULL;
+    s->count = 0;
+    s->capacity = 0;
 }
