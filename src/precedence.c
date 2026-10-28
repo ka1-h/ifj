@@ -132,3 +132,25 @@ static void stack_free(prec_stack_t *s) {
     s->count = 0;
     s->capacity = 0;
 }
+
+typedef enum {
+    R_LT, // < - insert mark, push token
+    R_GT, // > - reduce
+    R_EQ, // = - push token without mark
+    R_ERR // empty (syntax error)
+} prec_rel_t;
+
+static const prec_rel_t prec_table[PREC_COUNT][PREC_COUNT] = {
+    // unary muldiv add rel eq and or term lpar rpar dollar
+    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // unary
+    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // muldiv
+    {R_LT, R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // add
+    {R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // rel
+    {R_LT, R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // eq
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // and
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_LT, R_LT, R_GT, R_GT}, // or
+    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT}, // term
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_EQ, R_ERR}, // lpar
+    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT}, // rpar
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_ERR, R_ERR},  // dollar
+};
