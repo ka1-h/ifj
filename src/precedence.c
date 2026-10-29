@@ -181,7 +181,7 @@ static bool reduce(Parser *p, prec_stack_t *s) {
     size_t mark = s->count;
     while (mark > 0) {
         mark--;
-        if (s->items[mark].kind != ITEM_MARK) {
+        if (s->items[mark].kind == ITEM_MARK) {
             break;
         }
     }
@@ -191,7 +191,7 @@ static bool reduce(Parser *p, prec_stack_t *s) {
     }
 
     stack_item_t *h = &s->items[mark + 1];
-    size_t n = s->count = mark - 1;
+    size_t n = s->count - mark - 1;
     tree_node_t *result = NULL;
     bool ok = true;
 
@@ -227,4 +227,87 @@ static bool reduce(Parser *p, prec_stack_t *s) {
     s->count = mark;
     s->items[s->count++] = (stack_item_t){ITEM_NONTERM, PREC_DOLLAR, result};
     return true;
+}
+
+// pushes current input token on stack (as a leaf) and reads the next one
+static bool shift(Parser *p, prec_stack_t *s, prec_group_t group) {
+    tree_node_t *leaf = tree_create_terminal(&p->current);
+    if (!leaf || !stack_push(s, (stack_item_t){ITEM_TERM, group, leaf})) {
+        tree_dispose(&leaf);
+        set_error(p, PARSE_ERR_INTERNAL);
+        return false;
+    }
+    return parser_advance(p);
+}
+
+void rule_expression(Parser *p, tree_node_t *parent) {
+    if (p->error != PARSE_OK) {
+        return;
+    }
+
+    prec_stack_t s;
+    if (!stack_init(&s)) {
+        set_error(p, PARSE_ERR_INTERNAL);
+        return;
+    }
+
+    bool expect_operand = true;
+    int paren_depth = 0;
+
+    while (p->error == PARSE_OK) {
+        // b = group of the current input token
+        prec_group_t b = get_group(p->current.type, expect_operand);
+        if (b == PREC_RPAR && paren_depth == 0) {
+            b = PREC_DOLLAR;
+        }
+
+        // a = group of the topmost terminal on the stack
+        size_t top = stack_top_terminal(&s);
+        prec_group_t a = s.items[top].group;
+
+        // end: input is $ and stack is "$ E"
+        if (a == PREC_DOLLAR && b == PREC_DOLLAR) {
+            if (s.count != 2) { // only "$" = empty expression
+                set_error(p, PARSE_ERR_SYNTAX);
+            }
+            break;
+        }
+
+        prec_rel_t rel = prec_table[a][b];
+
+        if (rel == R_GT) {
+            reduce(p, &s);
+            continue;
+        }
+        if (rel == R_ERR) {
+            set_error(p, PARSE_ERR_SYNTAX);
+            break;
+        }
+
+        // R_LT or R_EQ: shift; R_LT also inserts the mark first
+        if (rel == R_LT && !stack_insert_mark(&s, top)) {
+            set_error(p, PARSE_ERR_INTERNAL);
+            break;
+        }
+        if (!shift(p, &s, b)) {
+            break;
+        }
+
+        if (b == PREC_LPAR) {
+            paren_depth++;
+        } else if (b == PREC_RPAR) {
+            paren_depth--;
+        }
+        expect_operand = !(b == PREC_TERM || b == PREC_RPAR);
+    }
+
+    // success - move final E under parent
+    if (p->error == PARSE_OK) {
+        if (tree_add_child(parent, s.items[1].node)) {
+            s.items[1].node = NULL;
+        } else {
+            set_error(p, PARSE_ERR_INTERNAL);
+        }
+    }
+    stack_free(&s);
 }
