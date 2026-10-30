@@ -1,0 +1,10 @@
+import ifj26.*
+
+@main def main(): Unit =
+    var x = 1
+    if then
+        x = (x - 1) * -2
+    else
+        x = 0
+    while x != 0 && !(x > 5) do
+        x = x-1
