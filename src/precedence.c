@@ -240,6 +240,62 @@ static bool shift(Parser *p, prec_stack_t *s, prec_group_t group) {
     return parser_advance(p);
 }
 
+static void parse_arg_list(Parser *p, tree_node_t *call) {
+    tree_node_t *args = tree_create_nonterminal(RULE_CALL_ARGS);
+    if (!args || !tree_add_child(call, args)) {
+        tree_dispose(&args);
+        set_error(p, PARSE_ERR_INTERNAL);
+        return;
+    }
+    if (parser_check(p, T_UNIT_BRACKETS)) {
+        parser_expect(p, T_UNIT_BRACKETS, args);
+        return;
+    }
+    parser_expect(p, T_LPARENTH, args);
+    rule_expression(p, args);
+    while (p->error == PARSE_OK && parser_check(p, T_COMMA)) {
+        parser_expect(p, T_COMMA, args);
+        rule_expression(p, args);
+    }
+    parser_expect(p, T_RPARENTH, args);
+}
+
+static bool shift_id(Parser *p, prec_stack_t *s) {
+    tree_node_t *node = tree_create_terminal(&p->current);
+    if (!node) {
+        set_error(p, PARSE_ERR_INTERNAL);
+        return false;
+    }
+    if (!parser_advance(p)) {
+        tree_dispose(&node);
+        return false;
+    }
+
+    if (parser_check(p, T_LPARENTH) || parser_check(p, T_UNIT_BRACKETS)) {
+        tree_node_t *call = tree_create_nonterminal(RULE_EXPRESSION_AFTER_ID);
+        if (!call || !tree_add_child(call, node)) {
+            tree_dispose(&node);
+            tree_dispose(&call);
+            set_error(p, PARSE_ERR_INTERNAL);
+            return false;
+        }
+        node = call;
+        while (p->error == PARSE_OK && (parser_check(p, T_LPARENTH) || parser_check(p, T_UNIT_BRACKETS))) {
+            parse_arg_list(p, node);
+        }
+        if (p->error != PARSE_OK) {
+            tree_dispose(&node);
+            return false;
+        }
+    }
+    if (!stack_push(s, (stack_item_t){ITEM_TERM, PREC_TERM, node})) {
+        tree_dispose(&node);
+        set_error(p, PARSE_ERR_INTERNAL);
+        return false;
+    }
+    return true;
+}
+
 void rule_expression(Parser *p, tree_node_t *parent) {
     if (p->error != PARSE_OK) {
         return;
@@ -289,7 +345,8 @@ void rule_expression(Parser *p, tree_node_t *parent) {
             set_error(p, PARSE_ERR_INTERNAL);
             break;
         }
-        if (!shift(p, &s, b)) {
+        bool shifted = (b == PREC_TERM && p->current.type == T_ID) ? shift_id(p, &s) : shift(p, &s, b);
+        if (!shifted) {
             break;
         }
 
