@@ -1,0 +1,9 @@
+import ifj26.*
+
+def add(a: Int, b: Int): Int = a + b
+
+@main def main(): Unit =
+    val n = readInt()
+    val x = 2 * add(n + 1, add(3, 4))
+    var s = toStr(x)
+    s = s + subStr("abcd", 1, 3)
