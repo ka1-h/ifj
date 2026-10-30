@@ -3,6 +3,7 @@
 
 #include "syntactic.h"
 #include "tree.h"
+#include "precedence.h"
 
 // Creates a nonterminal node and attaches it to parent; sets error 99 on failure
 static tree_node_t *add_node(Parser *p, tree_node_t *parent, tree_rule_t rule){
@@ -607,7 +608,7 @@ void rule_if_statement(Parser *p, tree_node_t *parent){
     tree_node_t *node = add_node(p, parent, RULE_IF_STATEMENT);
     if (!node) return;
     parser_expect(p, KW_IF, node);
-    //TODO expression
+    rule_expression(p, node);
     parser_expect(p, KW_THEN, node);
     rule_body(p, node);
     rule_else_part(p, node);
@@ -630,7 +631,7 @@ void rule_while_statement(Parser *p, tree_node_t *parent){
     tree_node_t *node = add_node(p, parent, RULE_WHILE_STATEMENT);
     if (!node) return;
     parser_expect(p, KW_WHILE, node);
-    //TODO expression
+    rule_expression(p, node);
     parser_expect(p, KW_DO, node);
     rule_body(p, node);
 }
@@ -758,10 +759,9 @@ void rule_value(Parser *p, tree_node_t *parent){
         if (node) rule_if_statement(p, node);
         return;
     }
-
     node = add_node(p, parent, RULE_VALUE_2);
     if (!node) return;
-    //TODO value_expression
+    rule_expression(p, node);
     rule_match_suffix(p, node);
 }
 
