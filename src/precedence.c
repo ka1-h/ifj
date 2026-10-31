@@ -240,6 +240,7 @@ static bool shift(Parser *p, prec_stack_t *s, prec_group_t group) {
     return parser_advance(p);
 }
 
+// reads the arguments of a call
 static void parse_arg_list(Parser *p, tree_node_t *call) {
     tree_node_t *args = tree_create_nonterminal(RULE_CALL_ARGS);
     if (!args || !tree_add_child(call, args)) {
@@ -260,17 +261,8 @@ static void parse_arg_list(Parser *p, tree_node_t *call) {
     parser_expect(p, T_RPARENTH, args);
 }
 
-static bool shift_id(Parser *p, prec_stack_t *s) {
-    tree_node_t *node = tree_create_terminal(&p->current);
-    if (!node) {
-        set_error(p, PARSE_ERR_INTERNAL);
-        return false;
-    }
-    if (!parser_advance(p)) {
-        tree_dispose(&node);
-        return false;
-    }
-
+// second half of shift_id - identifier lead is already read
+static bool push_id_or_call(Parser *p, prec_stack_t *s, tree_node_t *node) {
     if (parser_check(p, T_LPARENTH) || parser_check(p, T_UNIT_BRACKETS)) {
         tree_node_t *call = tree_create_nonterminal(RULE_EXPRESSION_AFTER_ID);
         if (!call || !tree_add_child(call, node)) {
@@ -296,19 +288,44 @@ static bool shift_id(Parser *p, prec_stack_t *s) {
     return true;
 }
 
-void rule_expression(Parser *p, tree_node_t *parent) {
+// pushes an identifier on the stack. if "(" follows, it is a function call -> reads all its arguments and pushes call as one term
+static bool shift_id(Parser *p, prec_stack_t *s) {
+    tree_node_t *node = tree_create_terminal(&p->current);
+    if (!node) {
+        set_error(p, PARSE_ERR_INTERNAL);
+        return false;
+    }
+    if (!parser_advance(p)) {
+        tree_dispose(&node);
+        return false;
+    }
+    return push_id_or_call(p, s, node);
+}
+
+static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_id) {
     if (p->error != PARSE_OK) {
+        tree_dispose(&first_id);
         return;
     }
 
     prec_stack_t s;
     if (!stack_init(&s)) {
+        tree_dispose(&first_id);
         set_error(p, PARSE_ERR_INTERNAL);
         return;
     }
 
     bool expect_operand = true;
     int paren_depth = 0;
+
+    if (first_id) {
+        if (!stack_insert_mark(&s, 0)) {
+            tree_dispose(&first_id);
+            set_error(p, PARSE_ERR_INTERNAL);
+        } else if (push_id_or_call(p, &s, first_id)) {
+            expect_operand = false;
+        }
+    }
 
     while (p->error == PARSE_OK) {
         // b = group of the current input token
@@ -367,4 +384,11 @@ void rule_expression(Parser *p, tree_node_t *parent) {
         }
     }
     stack_free(&s);
+}
+
+void rule_expression(Parser *p, tree_node_t * parent) {
+    parse_expression(p, parent, NULL);
+}
+void rule_expression_after_id(Parser *p, tree_node_t *parent, tree_node_t *id_leaf) {
+    parse_expression(p, parent, id_leaf);
 }
