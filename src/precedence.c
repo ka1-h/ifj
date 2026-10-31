@@ -14,6 +14,7 @@ typedef enum {
     PREC_LPAR, // (
     PREC_RPAR, // )
     PREC_DOLLAR, // anything else (end of input)
+    PREC_DOT, 
     PREC_COUNT
 } prec_group_t;
 
@@ -52,6 +53,8 @@ static prec_group_t get_group(t_type type, bool expect_operand) {
             return PREC_LPAR;
         case T_RPARENTH:
             return PREC_RPAR;
+        case T_DOT:
+            return PREC_DOT;
         default:
             return PREC_DOLLAR;
     }
@@ -141,18 +144,19 @@ typedef enum {
 } prec_rel_t;
 
 static const prec_rel_t prec_table[PREC_COUNT][PREC_COUNT] = {
-    // unary muldiv add rel eq and or term lpar rpar dollar
-    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // unary
-    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // muldiv
-    {R_LT, R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // add
-    {R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // rel
-    {R_LT, R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // eq
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT}, // and
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_LT, R_LT, R_GT, R_GT}, // or
-    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT}, // term
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_EQ, R_ERR}, // lpar
-    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT}, // rpar
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_ERR, R_ERR},  // dollar
+    // unary muldiv add rel eq and or term lpar rpar dollar dot
+    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // unary
+    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // muldiv
+    {R_LT, R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // add
+    {R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // rel
+    {R_LT, R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // eq
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // and
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // or
+    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT}, // term
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_EQ, R_ERR, R_LT}, // lpar
+    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT}, // rpar
+    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_ERR, R_ERR, R_LT},  // dollar
+    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_ERR, R_GT, R_GT, R_GT}, // dot
 };
 
 // sets error code, if no error happened before
@@ -164,7 +168,7 @@ static void set_error(Parser *p, int code) {
 
 // true for groups of binary operators
 static bool is_binary_op(prec_group_t g) {
-    return g == PREC_MULDIV || g == PREC_ADD || g == PREC_REL || g == PREC_EQ || g == PREC_AND || g == PREC_OR;
+    return g == PREC_MULDIV || g == PREC_ADD || g == PREC_REL || g == PREC_EQ || g == PREC_AND || g == PREC_OR || g == PREC_DOT;
 }
 
 // moves the subtree of a stack item under parent
@@ -174,6 +178,17 @@ static bool attach_item(tree_node_t *parent, stack_item_t *item) {
     }
     item->node = NULL;
     return true;
+}
+
+static bool is_member_name(const tree_node_t *e) {
+    if (!e || e->type != NODE_NONTERMINAL || e->rule != RULE_EXPRESSION || e->children_count != 1) {
+        return false;
+    }
+    const tree_node_t *c = e->children[0];
+    if (c->type == NODE_TERMINAL) {
+        return c->token.type == T_ID;
+    }
+    return c->rule == RULE_EXPRESSION_AFTER_ID;
 }
 
 // reduces the handle on top of the stack to one nonterminal E
@@ -203,8 +218,8 @@ static bool reduce(Parser *p, prec_stack_t *s) {
         // E -> -E, E -> !E
         result = tree_create_nonterminal(RULE_EXPRESSION_UNARY);
         ok = result && attach_item(result, &h[0]) && attach_item(result, &h[1]);
-    } else if (n == 3 && h[0].kind == ITEM_NONTERM && h[1].kind == ITEM_TERM && is_binary_op(h[1].group) && h[2].kind == ITEM_NONTERM) {
-        // E -> E op E
+    } else if (n == 3 && h[0].kind == ITEM_NONTERM && h[1].kind == ITEM_TERM && is_binary_op(h[1].group) && h[2].kind == ITEM_NONTERM && (h[1].group != PREC_DOT || is_member_name(h[2].node))) {
+        // E -> E op E, E -> E.name
         result = tree_create_nonterminal(RULE_EXPRESSION);
         ok = result && attach_item(result, &h[0]) && attach_item(result, &h[1]) && attach_item(result, &h[2]); 
     } else if (n == 3 && h[0].kind == ITEM_TERM && h[0].group == PREC_LPAR && h[1].kind == ITEM_NONTERM &&
