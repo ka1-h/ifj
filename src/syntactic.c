@@ -577,6 +577,7 @@ void rule_id_statement(Parser *p, tree_node_t *parent){
         return;
     }
     rule_expression_after_id(p, node, id_leaf);
+    rule_match_suffix(p, node);
 }
 
 
@@ -698,9 +699,9 @@ void rule_generator(Parser *p, tree_node_t *parent){
     if (!node) return;
     parser_expect(p, T_ID, node);
     parser_expect(p, T_ASSIG, node);
-    //TODO expression
+    rule_expression(p, node);
     rule_range_op(p, node);
-    //TODO expression
+    rule_expression(p, node);
     rule_step(p, node);
 }
 
@@ -723,7 +724,7 @@ void rule_step(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_STEP_1);
         if (!node) return;
         parser_expect(p, KW_BY, node);
-        //TODO expression
+        rule_expression(p, node);
     }else{
         add_node(p, parent, RULE_STEP_2);
     }
@@ -735,7 +736,7 @@ void rule_inline_guards(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_INLINE_GUARDS_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
         rule_inline_guards(p, node);
     }else{
         add_node(p, parent, RULE_INLINE_GUARDS_2);
@@ -748,7 +749,7 @@ void rule_guard_lines(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_GUARD_LINES_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
         rule_inline_guards(p, node);
         parser_expect(p, T_LF, node);
         rule_guard_lines(p, node);
@@ -824,7 +825,7 @@ void rule_case_guard(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_CASE_GUARD_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
     }else{
         add_node(p, parent, RULE_CASE_GUARD_2);
     }
