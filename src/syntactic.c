@@ -532,7 +532,7 @@ void rule_inline_statement(Parser *p, tree_node_t *parent){
 
     node = add_node(p, parent, RULE_INLINE_STATEMENT_6);
     if (!node) return;
-    //TODO expression_noid
+    rule_expression(p, node);
     rule_match_suffix(p, node);
 }
 
@@ -569,8 +569,14 @@ void rule_id_statement(Parser *p, tree_node_t *parent){
         rule_rhs(p, node);
         return;
     }
-    add_node(p, parent, RULE_ID_STATEMENT_2);
-    //TODO finish after expression after id (deti pridat do node)
+    tree_node_t *id_leaf = tree_get_child(parent, parent->children_count -1);
+    tree_detach(id_leaf);
+    node = add_node(p, parent, RULE_ID_STATEMENT_2);
+    if (!node) {
+        tree_dispose(&id_leaf);
+        return;
+    }
+    rule_expression_after_id(p, node, id_leaf);
 }
 
 
@@ -645,8 +651,8 @@ void rule_body(Parser *p, tree_node_t *parent){
         return;
     }
     if(parser_check(p, T_MINUS) || parser_check(p, T_NEG)){
-        add_node(p, parent, RULE_BODY_3);
-        //TODO expression_unary (deti pridat do node)
+        node = add_node(p, parent, RULE_BODY_3);
+        if (node) rule_expression(p, node);
         return;
     }
 
