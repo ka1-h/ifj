@@ -997,6 +997,7 @@ bool fetch_token(Parser *p) {
     // type of the previous token 
     bool after_lf = (p->current.type == T_LF);
     bool skip;
+    bool newline = false;
     do {
         int res = get_token(p->src, &p->current, &p->buffer, &p->dent, &p->processed,
                             &p->pos, p->pole_dent, &p->mul_de);
@@ -1021,7 +1022,10 @@ bool fetch_token(Parser *p) {
         if (!skip && p->paren_depth > 0) {
             t_type type = p->current.type;
             if (type == T_LF || type == T_INDENT || type == T_DEDENT) {
-                if (type == T_LF) p->paren_newline = true;
+                if (type == T_LF) {
+                    p->paren_newline = true;
+                    newline = true;
+                }
                 skip = true;
             } else if (p->paren_newline && type != T_EOF) {
                 // first token of a continuation line: all INDENT/DEDENT of this
@@ -1046,6 +1050,7 @@ bool fetch_token(Parser *p) {
             p->current.data = NULL;
         }
     } while (skip);
+    p->newline_before = newline;
 
     if (p->current.type == T_LPARENTH) {
         if (p->paren_depth == 0) {
@@ -1082,6 +1087,7 @@ bool parser_init(Parser *p, FILE *src) {
     p->paren_base_pos = 0;
     p->paren_base_indent = 0;
     p->paren_newline = false;
+    p->newline_before = false;
     p->prev_type = T_EOF; // nothing consumed yet, any type other than T_DEDENT
     p->current.type = T_EOF;
     p->current.data = NULL;
