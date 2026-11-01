@@ -271,6 +271,9 @@ static void parse_arg_list(Parser *p, tree_node_t *call) {
     rule_expression(p, args);
     while (p->error == PARSE_OK && parser_check(p, T_COMMA)) {
         parser_expect(p, T_COMMA, args);
+        if (parser_check(p, T_RPARENTH) && p->newline_before) {
+            break;
+        }
         rule_expression(p, args);
     }
     parser_expect(p, T_RPARENTH, args);
