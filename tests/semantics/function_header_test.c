@@ -7,6 +7,7 @@
 typedef struct {
     tree_node_t nodes[100];
     tree_node_t *children[100][6];
+    char names[100][16];
     size_t count;
 } TestTree;
 
@@ -32,7 +33,13 @@ static void test_child(tree_node_t *parent, tree_node_t *child) {
 
 static tree_node_t *test_terminal(TestTree *tree) {
     tree_node_t *node = test_node(tree, TREE_RULE_NONE);
+    size_t idx = tree->count - 1;
+
     node->type = NODE_TERMINAL;
+
+    snprintf(tree->names[idx], sizeof(tree->names[idx]), "id_%zu", idx);
+    node->token.data = tree->names[idx];
+
     return node;
 }
 
@@ -147,6 +154,60 @@ static void test_header(const char *name,
     printf("[PASS] %s\n", name);
 }
 
+static void test_returns(void) {
+    TestTree tree = {0};
+
+    tree_node_t *optional = test_node(&tree, RULE_OPTIONAL_TYPE_1);
+    test_child(optional, test_terminal(&tree));
+
+    tree_node_t *type = test_type(&tree, RULE_SIMPLE_TYPE_4);
+    test_child(optional, type);
+
+    tree_node_t *statement = test_node(&tree, RULE_RETURN_STATEMENT);
+    test_child(statement, test_terminal(&tree));
+
+    tree_node_t *value = test_node(&tree, RULE_RETURN_VALUE_2);
+    test_child(statement, value);
+
+    assert(semantic_check_return(statement, optional) == 0);
+    puts("[PASS] 08_bare_return_unit");
+
+    type->children[0]->rule = RULE_SIMPLE_TYPE_1;
+    assert(semantic_check_return(statement, optional) == 6);
+    puts("[PASS] 09_bare_return_int");
+
+    optional->rule = RULE_OPTIONAL_TYPE_2;
+    assert(semantic_check_return(statement, optional) == 6);
+    puts("[PASS] 10_bare_return_missing_type");
+
+    value->rule = RULE_RETURN_VALUE_1;
+    assert(semantic_check_return(statement, optional) == 6);
+    puts("[PASS] 11_value_return_missing_type");
+
+    optional->rule = RULE_OPTIONAL_TYPE_1;
+    type->children[0]->rule = RULE_SIMPLE_TYPE_4;
+    test_child(value, test_node(&tree, RULE_VALUE_2));
+
+    assert(semantic_check_return(statement, optional) == 0);
+    puts("[PASS] 12_value_return_unit");
+
+    tree_node_t *body = test_node(&tree, RULE_BLOCK);
+    tree_node_t *branch = test_node(&tree, RULE_IF_STATEMENT);
+    tree_node_t *loop = test_node(&tree, RULE_WHILE_STATEMENT);
+
+    test_child(body, branch);
+    test_child(branch, loop);
+    test_child(loop, statement);
+
+    optional->rule = RULE_OPTIONAL_TYPE_2;
+    assert(semantic_check_returns(body, optional) == 6);
+    puts("[PASS] 13_nested_return_missing_type");
+
+    optional->rule = RULE_OPTIONAL_TYPE_1;
+    assert(semantic_check_returns(body, optional) == 0);
+    puts("[PASS] 14_nested_return_unit");
+}
+
 int main(void) {
     tree_rule_t types[] = {
         RULE_SIMPLE_TYPE_1,
@@ -185,6 +246,7 @@ int main(void) {
     test_header("07_boolean_return_type", NULL, NULL, 0, 0,
                 RULE_SIMPLE_TYPE_5, TYPE_BOOL);
 
-    puts("All function header tests passed");
+    test_returns();
+    puts("All semantic unit tests passed");
     return 0;
 }
