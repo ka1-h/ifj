@@ -1,29 +1,32 @@
 
 #include "semantics.h"
 #include "symtable.h"
+#include <stdlib.h>
 
 
 
-//check that main has no parameter
-static int semantic_check_main_params(const tree_node_t *node) {
+
+
+//count parameters
+static size_t semantic_count_params(const tree_node_t *node) {
+    
     if (node == NULL) {
         return 0;
     }
 
-
     if (node->type == NODE_NONTERMINAL && node->rule == RULE_PARAM) {
-        return 5;
+        return 1;
     }
+
+    size_t count = 0;
 
     for (size_t idx = 0; idx < node->children_count; idx++) {
-        int error = semantic_check_main_params(node->children[idx]);
-
-        if (error != 0) {
-            return error;
-        }
+        count += semantic_count_params(node->children[idx]);
     }
 
-    return 0;
+
+    
+    return count;
 }
 
 
@@ -69,6 +72,29 @@ static DataType semantic_get_type(const tree_node_t *node) {
 }
 
 
+
+//save parameter types in order
+static void semantic_get_param_types(const tree_node_t *node, DataType *param_types, size_t *position) {
+    if (node == NULL) {
+        return;
+    }
+
+    if (node->type == NODE_NONTERMINAL && node->rule == RULE_PARAM) {
+        
+        param_types[*position] = semantic_get_type(node->children[2]);
+        (*position)++;
+        
+        
+        return;
+    }
+
+    for (size_t idx = 0; idx < node->children_count; idx++) {
+        semantic_get_param_types(node->children[idx], param_types, position);
+
+    }
+}
+
+
 //check return type of main
 static int semantic_check_main_type(const tree_node_t *node) {
     
@@ -99,6 +125,42 @@ static int semantic_check_main_type(const tree_node_t *node) {
 }
 
 
+//get function header data
+static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
+    
+    data->param_types = NULL;
+    data->param_count = 0;
+    data->return_type = TYPE_UNDEF;
+
+    const tree_node_t *params =node->children[2];
+    const tree_node_t *return_type = node->children[3];
+
+    data->param_count = semantic_count_params(params);
+
+
+    if (data->param_count > 0) {
+        
+        data->param_types = malloc(data->param_count * sizeof(*data->param_types ));
+        if (data->param_types == NULL) {
+            data->param_count = 0;
+            return 99;
+        }
+
+
+        size_t position = 0;
+        semantic_get_param_types(params, data->param_types, &position);
+    }
+
+    //get declared return type
+    if (return_type->rule == RULE_OPTIONAL_TYPE_1) {
+        data->return_type = semantic_get_type(return_type->children[1]);
+    }
+
+    return 0;
+}
+
+
+
 static int semantic_check_node(const tree_node_t *node, size_t *main_count) {
     if (node == NULL) {
         return 0;
@@ -110,17 +172,35 @@ static int semantic_check_node(const tree_node_t *node, size_t *main_count) {
         
         switch (node->rule) {
             
-            case RULE_TOP_ITEM_1:
+            case RULE_TOP_ITEM_1: {
                 (*main_count)++;
 
-                error = semantic_check_main_params(node->children[2]->children[2]);
+                FuncData data;
+
+                error = semantic_get_function_data(node->children[2], &data);
+                if (error != 0) {
+                    return error;
+                }
+
+                //check main parameters and return type
+                if (data.param_count != 0) {
+                    error = 5;
+
+                } else {
+                    error = semantic_check_main_type(node->children[2]->children[3]);
+                }
+
+
+                //free parameter types
+                free(data.param_types);
                 if (error != 0) {
                     return error;
                 }
 
                 break;
+            }
             
-
+            
 
             default:
                 break;
