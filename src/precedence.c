@@ -268,13 +268,16 @@ static void parse_arg_list(Parser *p, tree_node_t *call) {
         return;
     }
     parser_expect(p, T_LPARENTH, args);
-    rule_expression(p, args);
-    while (p->error == PARSE_OK && parser_check(p, T_COMMA)) {
-        parser_expect(p, T_COMMA, args);
-        if (parser_check(p, T_RPARENTH) && p->newline_before) {
-            break;
+    if (!parser_check(p, T_RPARENTH)) {
+        rule_value(p, args);
+        while (p->error == PARSE_OK && parser_check(p, T_COMMA)) {
+            parser_expect(p, T_COMMA, args);
+            // trailing comma: allowed only if ')' follows on a new line
+            if (parser_check(p, T_RPARENTH) && p->newline_before) {
+                break;
+            }
+            rule_value(p, args);
         }
-        rule_expression(p, args);
     }
     parser_expect(p, T_RPARENTH, args);
 }
@@ -320,15 +323,17 @@ static bool shift_id(Parser *p, prec_stack_t *s) {
     return push_id_or_call(p, s, node);
 }
 
-static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_id) {
+static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_lpar, tree_node_t *first_term) {
     if (p->error != PARSE_OK) {
-        tree_dispose(&first_id);
+        tree_dispose(&first_lpar);
+        tree_dispose(&first_term);
         return;
     }
 
     prec_stack_t s;
     if (!stack_init(&s)) {
-        tree_dispose(&first_id);
+        tree_dispose(&first_lpar);
+        tree_dispose(&first_term);
         set_error(p, PARSE_ERR_INTERNAL);
         return;
     }
@@ -336,11 +341,31 @@ static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_
     bool expect_operand = true;
     int paren_depth = 0;
 
-    if (first_id) {
-        if (!stack_insert_mark(&s, 0)) {
-            tree_dispose(&first_id);
+    if (first_lpar) {
+        if (stack_insert_mark(&s, stack_top_terminal(&s)) && stack_push(&s, (stack_item_t){ITEM_TERM, PREC_LPAR, first_lpar})) {
+            paren_depth = 1;
+        } else {
+            tree_dispose(&first_lpar);
             set_error(p, PARSE_ERR_INTERNAL);
-        } else if (push_id_or_call(p, &s, first_id)) {
+        }
+    }
+
+    if (first_term) {
+        bool ok;
+        if (p->error != PARSE_OK || !stack_insert_mark(&s, stack_top_terminal(&s))) {
+            tree_dispose(&first_term);
+            set_error(p, PARSE_ERR_INTERNAL);
+            ok = false;
+        } else if (first_term->token.type == T_ID) {
+            ok = push_id_or_call(p, &s, first_term);
+        } else {
+            ok = stack_push(&s, (stack_item_t){ITEM_TERM, PREC_TERM, first_term});
+            if (!ok) {
+                tree_dispose(&first_term);
+                set_error(p, PARSE_ERR_INTERNAL);
+            }
+        }
+        if (ok) {
             expect_operand = false;
         }
     }
@@ -405,8 +430,122 @@ static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_
 }
 
 void rule_expression(Parser *p, tree_node_t * parent) {
-    parse_expression(p, parent, NULL);
+    parse_expression(p, parent, NULL, NULL);
 }
 void rule_expression_after_id(Parser *p, tree_node_t *parent, tree_node_t *id_leaf) {
-    parse_expression(p, parent, id_leaf);
+    parse_expression(p, parent, NULL, id_leaf);
+}
+
+// creates a nonterminal and attaches it to parent
+static tree_node_t *new_child(Parser *p, tree_node_t *parent, tree_rule_t rule) {
+    tree_node_t *node = tree_create_nonterminal(rule);
+    if (!node || !tree_add_child(parent, node)) {
+        tree_dispose(&node);
+        set_error(p, PARSE_ERR_INTERNAL);
+        return NULL;
+    }
+    return node;
+}
+
+// attaches a leaf to parent, frees it on failure
+static bool add_leaf(Parser *p, tree_node_t *parent, tree_node_t *leaf) {
+    if (!tree_add_child(parent, leaf)) {
+        tree_dispose(&leaf);
+        set_error(p, PARSE_ERR_INTERNAL);
+        return false;
+    }
+    return true;
+}
+
+// makes a leaf from the current token and moves to the next one
+static tree_node_t *take_leaf(Parser *p) {
+    tree_node_t *leaf = tree_create_terminal(&p->current);
+    if (!leaf) {
+        set_error(p, PARSE_ERR_INTERNAL);
+        return NULL;
+    }
+    if (!parser_advance(p)) {
+        tree_dispose(&leaf);
+        return NULL;
+    }
+    return leaf;
+}
+
+// LAMBDA_ARROW := '=>' RHS (rule 64)
+static void parse_lambda_arrow(Parser *p, tree_node_t *parent) {
+    if (p->error != PARSE_OK) return;
+    tree_node_t *node = new_child(p, parent, RULE_LAMBDA_ARROW);
+    if (!node) return;
+    parser_expect(p, T_LAMB, node);
+    rule_rhs(p, node);
+}
+
+// LAMBDA_AFTER_ID := ':' TYPE PARAM_LIST_REST ')' LAMBDA_ARROW (rule 63)
+static void parse_lambda_after_id(Parser *p, tree_node_t *parent) {
+    if (p->error != PARSE_OK) return;
+    tree_node_t *node = new_child(p, parent, RULE_LAMBDA_AFTER_ID);
+    if (!node) return;
+    parser_expect(p, T_COL, node);
+    rule_type(p, node);
+    rule_param_list_rest(p, node);
+    parser_expect(p, T_RPARENTH, node);
+    parse_lambda_arrow(p, node);
+}
+
+void rule_value_expression(Parser *p, tree_node_t *parent) {
+    if (p->error != PARSE_OK) return;
+
+    // "() => body", or just the Unit value "()"
+    if (parser_check(p, T_UNIT_BRACKETS)) {
+        tree_node_t *unit = take_leaf(p);
+        if (!unit) return;
+        if (!parser_check(p, T_LAMB)) {
+            parse_expression(p, parent, NULL, unit);
+            return;
+        }
+        tree_node_t *lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
+        if (!lambda) {
+            tree_dispose(&unit);
+            return;
+        }
+        if (add_leaf(p, lambda, unit)) {
+            parse_lambda_arrow(p, lambda);
+        }
+        return;
+    }
+
+    // "(identif: Type, ...) => body", or an expression starting with "("
+    if (parser_check(p, T_LPARENTH)) {
+        tree_node_t *lpar = take_leaf(p);
+        if (!lpar) return;
+        if (!parser_check(p, T_ID)) {
+            parse_expression(p, parent, lpar, NULL);
+            return;
+        }
+        tree_node_t *id = take_leaf(p);
+        if (!id) {
+            tree_dispose(&lpar);
+            return;
+        }
+        if (!parser_check(p, T_COL)) {
+            parse_expression(p, parent, lpar, id);
+            return;
+        }
+        // "(" identif ":" -> it is a lambda
+        tree_node_t *lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
+        if (!lambda) {
+            tree_dispose(&lpar);
+            tree_dispose(&id);
+            return;
+        }
+        if (!add_leaf(p, lambda, lpar)) {
+            tree_dispose(&id);
+            return;
+        }
+        if (add_leaf(p, lambda, id)) {
+            parse_lambda_after_id(p, lambda);
+        }
+        return;
+    }
+    rule_expression(p, parent);
 }
