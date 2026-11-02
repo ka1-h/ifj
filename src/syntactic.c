@@ -532,7 +532,7 @@ void rule_inline_statement(Parser *p, tree_node_t *parent){
 
     node = add_node(p, parent, RULE_INLINE_STATEMENT_6);
     if (!node) return;
-    rule_expression(p, node);
+    rule_value_expression(p, node);
     rule_match_suffix(p, node);
 }
 
@@ -768,7 +768,7 @@ void rule_value(Parser *p, tree_node_t *parent){
     }
     node = add_node(p, parent, RULE_VALUE_2);
     if (!node) return;
-    rule_expression(p, node);
+    rule_value_expression(p, node);
     rule_match_suffix(p, node);
 }
 
