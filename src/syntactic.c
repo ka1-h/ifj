@@ -3,6 +3,7 @@
 
 #include "syntactic.h"
 #include "tree.h"
+#include "precedence.h"
 
 // Creates a nonterminal node and attaches it to parent; sets error 99 on failure
 static tree_node_t *add_node(Parser *p, tree_node_t *parent, tree_rule_t rule){
@@ -531,7 +532,7 @@ void rule_inline_statement(Parser *p, tree_node_t *parent){
 
     node = add_node(p, parent, RULE_INLINE_STATEMENT_6);
     if (!node) return;
-    //TODO expression_noid
+    rule_value_expression(p, node);
     rule_match_suffix(p, node);
 }
 
@@ -568,8 +569,15 @@ void rule_id_statement(Parser *p, tree_node_t *parent){
         rule_rhs(p, node);
         return;
     }
-    add_node(p, parent, RULE_ID_STATEMENT_2);
-    //TODO finish after expression after id (deti pridat do node)
+    tree_node_t *id_leaf = tree_get_child(parent, parent->children_count -1);
+    tree_detach(id_leaf);
+    node = add_node(p, parent, RULE_ID_STATEMENT_2);
+    if (!node) {
+        tree_dispose(&id_leaf);
+        return;
+    }
+    rule_expression_after_id(p, node, id_leaf);
+    rule_match_suffix(p, node);
 }
 
 
@@ -607,7 +615,7 @@ void rule_if_statement(Parser *p, tree_node_t *parent){
     tree_node_t *node = add_node(p, parent, RULE_IF_STATEMENT);
     if (!node) return;
     parser_expect(p, KW_IF, node);
-    //TODO expression
+    rule_expression(p, node);
     parser_expect(p, KW_THEN, node);
     rule_body(p, node);
     rule_else_part(p, node);
@@ -630,7 +638,7 @@ void rule_while_statement(Parser *p, tree_node_t *parent){
     tree_node_t *node = add_node(p, parent, RULE_WHILE_STATEMENT);
     if (!node) return;
     parser_expect(p, KW_WHILE, node);
-    //TODO expression
+    rule_expression(p, node);
     parser_expect(p, KW_DO, node);
     rule_body(p, node);
 }
@@ -644,8 +652,8 @@ void rule_body(Parser *p, tree_node_t *parent){
         return;
     }
     if(parser_check(p, T_MINUS) || parser_check(p, T_NEG)){
-        add_node(p, parent, RULE_BODY_3);
-        //TODO expression_unary (deti pridat do node)
+        node = add_node(p, parent, RULE_BODY_3);
+        if (node) rule_expression(p, node);
         return;
     }
 
@@ -691,9 +699,9 @@ void rule_generator(Parser *p, tree_node_t *parent){
     if (!node) return;
     parser_expect(p, T_ID, node);
     parser_expect(p, T_ASSIG, node);
-    //TODO expression
+    rule_expression(p, node);
     rule_range_op(p, node);
-    //TODO expression
+    rule_expression(p, node);
     rule_step(p, node);
 }
 
@@ -716,7 +724,7 @@ void rule_step(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_STEP_1);
         if (!node) return;
         parser_expect(p, KW_BY, node);
-        //TODO expression
+        rule_expression(p, node);
     }else{
         add_node(p, parent, RULE_STEP_2);
     }
@@ -728,7 +736,7 @@ void rule_inline_guards(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_INLINE_GUARDS_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
         rule_inline_guards(p, node);
     }else{
         add_node(p, parent, RULE_INLINE_GUARDS_2);
@@ -741,7 +749,7 @@ void rule_guard_lines(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_GUARD_LINES_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
         rule_inline_guards(p, node);
         parser_expect(p, T_LF, node);
         rule_guard_lines(p, node);
@@ -758,10 +766,9 @@ void rule_value(Parser *p, tree_node_t *parent){
         if (node) rule_if_statement(p, node);
         return;
     }
-
     node = add_node(p, parent, RULE_VALUE_2);
     if (!node) return;
-    //TODO value_expression
+    rule_value_expression(p, node);
     rule_match_suffix(p, node);
 }
 
@@ -818,7 +825,7 @@ void rule_case_guard(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_CASE_GUARD_1);
         if (!node) return;
         parser_expect(p, KW_IF, node);
-        //TODO expression
+        rule_expression(p, node);
     }else{
         add_node(p, parent, RULE_CASE_GUARD_2);
     }
@@ -990,6 +997,7 @@ bool fetch_token(Parser *p) {
     // type of the previous token 
     bool after_lf = (p->current.type == T_LF);
     bool skip;
+    bool newline = false;
     do {
         int res = get_token(p->src, &p->current, &p->buffer, &p->dent, &p->processed,
                             &p->pos, p->pole_dent, &p->mul_de);
@@ -1014,7 +1022,10 @@ bool fetch_token(Parser *p) {
         if (!skip && p->paren_depth > 0) {
             t_type type = p->current.type;
             if (type == T_LF || type == T_INDENT || type == T_DEDENT) {
-                if (type == T_LF) p->paren_newline = true;
+                if (type == T_LF) {
+                    p->paren_newline = true;
+                    newline = true;
+                }
                 skip = true;
             } else if (p->paren_newline && type != T_EOF) {
                 // first token of a continuation line: all INDENT/DEDENT of this
@@ -1039,6 +1050,7 @@ bool fetch_token(Parser *p) {
             p->current.data = NULL;
         }
     } while (skip);
+    p->newline_before = newline;
 
     if (p->current.type == T_LPARENTH) {
         if (p->paren_depth == 0) {
@@ -1075,6 +1087,7 @@ bool parser_init(Parser *p, FILE *src) {
     p->paren_base_pos = 0;
     p->paren_base_indent = 0;
     p->paren_newline = false;
+    p->newline_before = false;
     p->prev_type = T_EOF; // nothing consumed yet, any type other than T_DEDENT
     p->current.type = T_EOF;
     p->current.data = NULL;

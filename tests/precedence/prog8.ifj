@@ -1,0 +1,31 @@
+import ifj26.*
+
+def foo(x: Int) = x + 5
+
+def bar(a: Int, f: (Int) => Boolean) =
+    val result = f(a)
+    if result then
+        print("f uspelo")
+    else
+        print("f neuspelo")
+
+def goo(): (Int) => String =
+    return (a: Int) =>
+        val strA = toStr(a)
+        "cislo" + strA
+
+@main def main(): Unit =
+    val add: (Int, Int) => Int =
+        (left: Int, right: Int) => left + right
+    val positive = (value: Int) => value > 0
+    val addFive: (Int) => Int = foo
+    val x = add(10, 8)
+    val y = addFive(x)
+    bar(y, positive)
+    bar(y, (v: Int) => v < 0)
+    val k = () => 42
+    val u = ()
+    val z = (x + 1) * 2
+    val w = (x)
+    print(if x > 0 then 1 else 2)
+    print(readInt( ))

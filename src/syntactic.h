@@ -29,6 +29,7 @@ typedef struct {
     int paren_base_pos;     // pos in pole_dent when the outermost '(' was opened
     int paren_base_indent;  // indentation of the logical line with the outermost '('
     bool paren_newline;     // a physical LF was skipped inside parentheses
+    bool newline_before;   // a line break was skipped right before current
 
     t_type prev_type;  // type of the last consumed token (set in parser_advance)
     Token current;     // the lookahead token, always valid after parser_init
