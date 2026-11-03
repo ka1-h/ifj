@@ -383,10 +383,15 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     break;
                 }else{
                     ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_DOT;
-                    buffer_clear(buffer);
-                    return 0;
+                    if(strlen(buffer->data) > 1){
+                        buffer_clear(buffer);
+                        return 1;
+                    }else{
+                        token->data = strdup(buffer->data);
+                        token->type = T_DOT;
+                        buffer_clear(buffer);
+                        return 0;
+                    }
                 }
             case S_EXP:
                 if(isdigit(c)){
