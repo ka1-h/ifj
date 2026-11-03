@@ -1,6 +1,6 @@
 // Syntakticky test: definicie na najvyssej urovni (type, case class, def, @main).
 // Platny IFJ26 kod.
-// Pravidla: 4, 5, 6, 7, 8, 9, 10, 11, 12-16, 17, 18
+// Pravidla: 4, 5, 6, 7, 8, 9, 11, 12, 13-17, 18, 19
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 type Num = Int | Double

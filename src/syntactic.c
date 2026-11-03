@@ -348,10 +348,23 @@ void rule_param_list_rest(Parser *p, tree_node_t *parent){
         tree_node_t *node = add_node(p, parent, RULE_PARAM_LIST_REST_1);
         if (!node) return;
         parser_expect(p, T_COMMA, node);
-        rule_param_list(p, node);
+        rule_param_after_comma(p, node);
     }else{
         add_node(p, parent, RULE_PARAM_LIST_REST_2);
     }
+}
+
+void rule_param_after_comma(Parser *p, tree_node_t *parent){
+    if (p->error != PARSE_OK) return;
+    // trailing comma: allowed only if ')' follows on a new line
+    if(parser_check(p, T_RPARENTH) && p->newline_before){
+        add_node(p, parent, RULE_PARAM_AFTER_COMMA_2);
+        return;
+    }
+    tree_node_t *node = add_node(p, parent, RULE_PARAM_AFTER_COMMA_1);
+    if (!node) return;
+    rule_param(p, node);
+    rule_param_list_rest(p, node);
 }
 
 void rule_optional_type(Parser *p, tree_node_t *parent){

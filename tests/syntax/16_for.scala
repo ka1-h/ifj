@@ -1,6 +1,6 @@
 // Syntakticky test: for (jednoriadkova a viacriadkova hlavicka, to/until/by, straze).
 // Platny IFJ26 kod. Meze a straze su trivialne vyrazy.
-// Pravidla: 39-45
+// Pravidla: 40-46
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 def f(n: Int): Unit =

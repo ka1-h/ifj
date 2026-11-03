@@ -1,6 +1,6 @@
 // Syntakticky test: komentare a prazdne riadky pred prologom a medzi definiciami.
 // Platny IFJ26 kod.
-// Pravidla: 1, 2, 3, 72
+// Pravidla: 1, 2, 3, 73
 // Ocakavany vysledok: kod 0.
 
 /* blokovy

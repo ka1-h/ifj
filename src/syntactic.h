@@ -59,6 +59,7 @@ void rule_param_lists(Parser *p, tree_node_t *parent);
 void rule_param(Parser *p, tree_node_t *parent);
 void rule_param_list(Parser *p, tree_node_t *parent);
 void rule_param_list_rest(Parser *p, tree_node_t *parent);
+void rule_param_after_comma(Parser *p, tree_node_t *parent);
 void rule_optional_type(Parser *p, tree_node_t *parent);
 void rule_func_type_params(Parser *p, tree_node_t *parent);
 void rule_func_type_rest(Parser *p, tree_node_t *parent);

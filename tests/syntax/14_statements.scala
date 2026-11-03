@@ -1,6 +1,6 @@
 // Syntakticky test: prikazy v bloku (val/var, priradenie, strednik, return, vnoreny blok).
 // Platny IFJ26 kod. Vyrazy su trivialne (identifikator, literal, volanie).
-// Pravidla: 22-34
+// Pravidla: 23-35
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 def f(a: Int): Int =

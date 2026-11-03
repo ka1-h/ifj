@@ -1,6 +1,6 @@
 // Syntakticky test: if/else (inline aj blokove, else if, if ako hodnota) a while.
 // Platny IFJ26 kod. Podmienky su trivialne vyrazy.
-// Pravidla: 35, 36, 37, 38, 46.1
+// Pravidla: 36, 37, 38, 39, 47.1
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 def f(a: Int): Int =

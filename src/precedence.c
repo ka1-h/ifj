@@ -471,7 +471,7 @@ static tree_node_t *take_leaf(Parser *p) {
     return leaf;
 }
 
-// LAMBDA_ARROW := '=>' RHS (rule 64)
+// LAMBDA_ARROW := '=>' RHS (rule 65)
 static void parse_lambda_arrow(Parser *p, tree_node_t *parent) {
     if (p->error != PARSE_OK) return;
     tree_node_t *node = new_child(p, parent, RULE_LAMBDA_ARROW);
@@ -480,7 +480,7 @@ static void parse_lambda_arrow(Parser *p, tree_node_t *parent) {
     rule_rhs(p, node);
 }
 
-// LAMBDA_AFTER_ID := ':' TYPE PARAM_LIST_REST ')' LAMBDA_ARROW (rule 63)
+// LAMBDA_AFTER_ID := ':' TYPE PARAM_LIST_REST ')' LAMBDA_ARROW (rule 64)
 static void parse_lambda_after_id(Parser *p, tree_node_t *parent) {
     if (p->error != PARSE_OK) return;
     tree_node_t *node = new_child(p, parent, RULE_LAMBDA_AFTER_ID);

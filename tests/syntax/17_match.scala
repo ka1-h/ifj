@@ -1,6 +1,6 @@
 // Syntakticky test: match so vsetkymi druhmi vzorov, straze, blok ako telo vetvy.
 // Platny IFJ26 kod.
-// Pravidla: 47-58
+// Pravidla: 48-59
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 case class Point(x: Int, y: Int)

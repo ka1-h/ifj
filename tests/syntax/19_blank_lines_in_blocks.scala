@@ -1,6 +1,6 @@
 // Syntakticky test: prazdne riadky, riadky s medzerami a komentare vnutri blokov.
 // Platny IFJ26 kod (spec 1.2: take riadky sa ignoruju a nemenia odsadenie).
-// Pravidla: 23-27, 36
+// Pravidla: 24-28, 37
 // Ocakavany vysledok: kod 0.
 import ifj26.*
 def f(a: Int) =
