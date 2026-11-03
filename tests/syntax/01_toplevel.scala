@@ -10,6 +10,8 @@ type Fn = (Int, String) => Boolean
 type Thunk = () => Unit
 type Higher = ((Int) => Int, Int) => (Int) => Int
 case class Point(x: Int, y: Int)
-case class Named(name: String,)
+case class Named(
+    name: String,
+)
 case class Empty()
 case class WithFn(f: (Int) => Int, g: () => Unit)
