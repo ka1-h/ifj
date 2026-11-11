@@ -1,0 +1,23 @@
+import ifj26.*
+
+type Scalar = Int | Double | String
+case class Point(x: Int, y: Int)
+
+def describe(value: Int | String | Point): String =
+    value match
+        case 0 => "zero"
+        case n: Int if n > 0 => "positive"
+        case text: String => text
+        case Point(a, b) => toStr(a + b)
+        case _ => "negative"
+
+@main def main(): Unit =
+    val limit = 10
+    for i <- 1 to limit * 2 by 2 do
+        print(i)
+    for
+        i <- 0 until limit
+        if i != 3
+        if i < 8 && i > 1
+    do
+        print(i)

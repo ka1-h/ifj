@@ -5,6 +5,7 @@
 
 import ifj26.*
 @main
-def main(a: Int, b: String,)(f: (Int, String) => Boolean)()(g: () => Unit): Unit =
+def main(a: Int, b: String,
+)(f: (Int, String) => Boolean)()(g: () => Unit): Unit =
   return
   return; return; return

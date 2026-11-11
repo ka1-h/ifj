@@ -1,0 +1,14 @@
+import ifj26.*
+
+extension (value: Int)
+    def twice: Int = value * 2
+    def plus(other: Int): Int = value + other
+
+@main def main(): Unit =
+    val s = "abc"
+    val n = s.length + 1
+    val d = 3.7
+    val k = d.floor.toInt
+    val t = (n * 2).toString
+    val w = n.plus(12).twice
+    val u = -s.length

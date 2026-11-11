@@ -2,6 +2,7 @@
 #include "scanner.h"
 
 int line_now = 1;
+bool gap = false, next_lf = false, found_com_lf = false;
 
 void buffer_init(Buffer *buf){
     buf->length = 0;
@@ -72,15 +73,18 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
     State state = S_START;
     int c = -1, left = 0, right = 0, res = 0;
     bool exponent = false, has_d = false, has_end = false;
-
     if(!(*processed)){
         res = what_dent(*dent, pos, pole_dent);
         if(res == 1){
+            *mul_de = true;
             *dent = 0;
             *processed = true;
             token->type = T_INDENT;
             return 0;
         }else if(res == -1){
+            if(pole_dent[*pos] == 0){
+                *mul_de = false;
+            }
             token->type = T_DEDENT;
             return 0;
         }else if(res == 0){
@@ -97,6 +101,13 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
             case S_START:
                 token->line = line_now;
                 if(c == EOF){
+                    if(pole_dent[*pos] != 0){
+                        what_dent(*dent, pos, pole_dent);
+                        ungetc(c, src);
+                        token->type = T_DEDENT;
+                        buffer_clear(buffer);
+                        return 0;
+                    }
                     token->type = T_EOF;
                     buffer_clear(buffer);
                     return 0;
@@ -261,7 +272,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     state = S_IFJ;
                     break;
                 }else{
-                    ungetc(c, src);     //returning unused char back to entry
+                    ungetc(c, src);
                     token->data = strdup(buffer->data);
                     token->type = T_ID;
                     is_keyword(token);
@@ -293,9 +304,18 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }
             case S_ZERO:
                 if(isdigit(c)){
-                    break;
+                    buffer_clear(buffer);
+                    return 1;
                 }else if(c == '_'){
                     state = S_ZERO_UNDER;
+                    break;
+                }else if(c == '.'){
+                    buffer_append(buffer, (char)c);
+                    state = S_DOUBLE;
+                    break;
+                }else if(c == 'e' || c == 'E'){
+                    buffer_append(buffer, (char)c);
+                    state = S_EXP;
                     break;
                 }else{
                     ungetc(c, src);
@@ -345,33 +365,17 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     return 1;
                 }
             case S_MINUS:
-                if(isdigit(c)){
-                    buffer_append(buffer, (char)c);
-                    if(c == '0'){
-                        state = S_ZERO;
-                    }else{
-                        state = S_INT;
-                    }
-                    break;
-                }else{
-                    ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_MINUS;
-                    buffer_clear(buffer);
-                    return 0;
-                }
+                ungetc(c, src);
+                token->data = strdup(buffer->data);
+                token->type = T_MINUS;
+                buffer_clear(buffer);
+                return 0;
             case S_PLUS:
-                if(isdigit(c)){
-                    buffer_append(buffer, (char)c);
-                    state = S_INT;
-                    break;
-                }else{
-                    ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_PLUS;
-                    buffer_clear(buffer);
-                    return 0;
-                }
+                ungetc(c, src);
+                token->data = strdup(buffer->data);
+                token->type = T_PLUS;
+                buffer_clear(buffer);
+                return 0;
             case S_DOT:
                 if(isdigit(c)){
                     buffer_append(buffer, (char)c);
@@ -379,10 +383,15 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                     break;
                 }else{
                     ungetc(c, src);
-                    token->data = strdup(buffer->data);
-                    token->type = T_DOT;
-                    buffer_clear(buffer);
-                    return 0;
+                    if(strlen(buffer->data) > 1){
+                        buffer_clear(buffer);
+                        return 1;
+                    }else{
+                        token->data = strdup(buffer->data);
+                        token->type = T_DOT;
+                        buffer_clear(buffer);
+                        return 0;
+                    }
                 }
             case S_EXP:
                 if(isdigit(c)){
@@ -784,7 +793,7 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 if(c == '&'){
                     buffer_append(buffer, (char)c);
                     token->data = strdup(buffer->data);
-                    token->type = T_NET;
+                    token->type = T_AND;
                     buffer_clear(buffer);
                     return 0;
                 }else{
@@ -832,59 +841,32 @@ int get_token(FILE *src, Token *token, Buffer *buffer, int *dent, bool *processe
                 }
             case S_LF:
                 if(c == 10){
-                    if(pole_dent[*pos] != 0 && *mul_de == false){
-                        *mul_de = true;
-                        ungetc(c, src);
-                        token->type = T_LF;
-                        return 0;
-                    }else{
-                        *dent = 0;
-                        line_now++;
-                        break;
-                    }
+                    line_now++;
+                    *dent = 0;
+                    break;
                 }else if(c == 9){
                     buffer_clear(buffer);
                     return 1;
                 }else if(c == ' '){
                     (*dent)++;
                     break;
+                }else if(c == '/'){
+                    *dent = 0;
+                    ungetc(c, src);
+                    token->type = T_LF;
+                    buffer_clear(buffer);
+                    state = S_START;
+                    return 0;
                 }else{
-                    if(pole_dent[*pos] != 0 && *mul_de == true){
-                        //printf("%d\n", (*dent));
-                        //printf("%d\n", pole_dent[*pos]);
-                        if(pole_dent[*pos] <= (*dent)){
-                            ungetc(c, src);
-                            state = S_START;
-                            buffer_clear(buffer);
-                            *processed = true;
-                            break;
-                        }else{
-                            what_dent(*dent, pos, pole_dent);
-                            ungetc(c, src);
-                            token->type = T_DEDENT;
-                            *processed = false;
-                            if(pole_dent[*pos] == 0){
-                                *mul_de = false;
-                                *processed = true;
-                            }
-                            buffer_clear(buffer);
-                            return 0;
-                        }
-                        /*what_dent(*dent, pos, pole_dent);
-                        ungetc(c, src);
-                        token->type = T_DEDENT;
+                    ungetc(c, src);
+                    if(*dent != 0 || *mul_de == true){
                         *processed = false;
-                        if(pole_dent[*pos] == 0){
-                            *mul_de = false;
-                            *processed = true;
-                        }
-                        buffer_clear(buffer);
-                        return 0;*/
-                    }else{
-                        ungetc(c, src);
                         token->type = T_LF;
                         buffer_clear(buffer);
-                        *processed = false;
+                        return 0;
+                    }else{
+                        token->type = T_LF;
+                        buffer_clear(buffer);
                         return 0;
                     }
                 }
