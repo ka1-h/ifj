@@ -31,7 +31,6 @@ void semantic_info_free(SemanticInfo *info) {
 
 
 
-//get or create semantic data for one node
 static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree_node_t *node) {
     
     for(size_t idx = 0; idx < info->count; idx++) {
@@ -43,12 +42,13 @@ static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree
         
     }
 
-    //grow the array when it is full
+    //zvetseni pole kdyz uz neni misto
     if(info->count == info->capacity) {
         size_t new_capacity = 32;
 
         if(info->capacity != 0) {
             
+            //kontrola preteceni
             size_t max_capacity = SIZE_MAX/sizeof(*info->items);
             if(info->capacity > max_capacity/2) {
                 return NULL;
@@ -72,7 +72,6 @@ static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree
 
 
 
-    //fill the new entry
     SemanticNodeInfo *item = &info->items[info->count];
     item->node = node;
     item->type = TYPE_UNDEF;
@@ -88,7 +87,6 @@ static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree
 }
 
 
-//count parameters
 static size_t semantic_count_params(const tree_node_t *node) {
     
     if(node == NULL) {
@@ -113,7 +111,6 @@ static size_t semantic_count_params(const tree_node_t *node) {
 }
 
 
-//get type from type node
 static DataType semantic_get_type(const tree_node_t *node) {
     
     if(node == NULL || node->type!=NODE_NONTERMINAL) {
@@ -153,7 +150,6 @@ static DataType semantic_get_type(const tree_node_t *node) {
 
 
 
-//save parameter types in order
 static void semantic_get_param_types(const tree_node_t *node, DataType *param_types, size_t *position) {
     if(node == NULL) {
         return;
@@ -177,7 +173,6 @@ static void semantic_get_param_types(const tree_node_t *node, DataType *param_ty
 
 
 
-//get the type of a literal token
 static DataType semantic_literal_type(const tree_node_t *node) {
     
     if(node==NULL || node->type!=NODE_TERMINAL){
@@ -209,7 +204,7 @@ static DataType semantic_literal_type(const tree_node_t *node) {
 
 
 
-//save the result type for the generator
+//typ uklada k uzlu, aby ho generator nemusel znovu zjistovat
 static int semantic_save_type(SemanticInfo *info, const tree_node_t *node,DataType type) {
     
     SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
@@ -233,7 +228,6 @@ typedef struct SemanticScope {
 
 
 
-//find the declaration of a used variable
 static int semantic_resolve_variable(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
     const char *name = node->token.data;
 
@@ -289,7 +283,6 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
 static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result);
 
 
-//determine the type of a simple expression
 static int semantic_type_expression(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
     *result = TYPE_UNDEF;
 
@@ -391,7 +384,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
     }
 
 
-    //mark the Int operand for conversion
+    //kdyz se typy lisi, generator musi prevest int na double
     if(left_type != right_type) {
         
         const tree_node_t *operand = right;
@@ -415,7 +408,6 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
 
 
-//type a call with one argument list
 static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
     
     if(scope == NULL) {
@@ -533,7 +525,6 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
 }
 
 
-//check return type of main
 static int semantic_check_main_type(const tree_node_t *node) {
     
     
@@ -544,7 +535,6 @@ static int semantic_check_main_type(const tree_node_t *node) {
     const tree_node_t *type_node = node->children[1];
 
 
-    //function type cant be unit
     if(type_node->rule == RULE_TYPE_2) {
         return 6;
     }
@@ -564,7 +554,6 @@ static int semantic_check_main_type(const tree_node_t *node) {
 }
 
 
-//check duplicate parameter names
 static int semantic_check_param_names(const tree_node_t *node, const char **names, size_t *count) {
     if(node == NULL) {
         return 0;
@@ -601,7 +590,6 @@ static int semantic_check_param_names(const tree_node_t *node, const char **name
 }
 
 
-//get function header data
 static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
     
     data->param_types = NULL;
@@ -614,10 +602,8 @@ static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
     data->param_count = semantic_count_params(params);
 
 
-    //get parameter data
     if(data->param_count > 0) {
         
-        //check parameter names
         const char **names = malloc(data->param_count * sizeof(*names));
 
         if (names == NULL) {
@@ -636,7 +622,6 @@ static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
         }
         
 
-        //get parameter types
         data->param_types = malloc(data->param_count * sizeof(*data->param_types ));
         if (data->param_types == NULL) {
             data->param_count = 0;
@@ -650,7 +635,6 @@ static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
 
 
 
-    //get declared return type
     if(return_type->rule == RULE_OPTIONAL_TYPE_1) {
         data->return_type = semantic_get_type(return_type->children[1]);
     }
@@ -660,12 +644,10 @@ static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
 
 
 
-//add function to global symtable
 static int semantic_register_function(const tree_node_t *node, SymTable *functions,SemanticInfo *info) {
     const char *name = node->children[1]->token.data;
 
 
-    //check duplicate function
     if(symtable_lookup(functions, name) != NULL) {
         return 4;
     }
@@ -710,7 +692,6 @@ static int semantic_register_function(const tree_node_t *node, SymTable *functio
 
 
 
-//collect global functions and check function headers
 static int semantic_collect_functions(const tree_node_t *node, SymTable *functions, size_t *main_count, SemanticInfo *info) {
     
     if (node == NULL) {
@@ -741,7 +722,7 @@ static int semantic_collect_functions(const tree_node_t *node, SymTable *functio
 
             case RULE_FUNCTION_DEF: {
                 
-                //check other function headers without global registration
+                //u ostatnich funkci jen kontrola headeru
                 FuncData data;
 
                 error = semantic_get_function_data(node, &data);
@@ -773,9 +754,8 @@ static int semantic_collect_functions(const tree_node_t *node, SymTable *functio
 }
 
 
-//check one return
 static int semantic_check_return(const tree_node_t *node,const tree_node_t *return_type) {
-    //return requires declared type
+    //return vyzaduje uvedeny navratovy typ
     if(return_type->rule == RULE_OPTIONAL_TYPE_2) {
         return 6;
     }
@@ -783,7 +763,7 @@ static int semantic_check_return(const tree_node_t *node,const tree_node_t *retu
     const tree_node_t *value = node->children[1];
 
 
-    //check return with value later
+    //todo - typ hodnoty v returnu
     if(value->rule == RULE_RETURN_VALUE_1) {
         return 0;
     }
@@ -796,12 +776,11 @@ static int semantic_check_return(const tree_node_t *node,const tree_node_t *retu
 
     DataType type = semantic_get_type(type_node);
 
-    //resolve aliases and union types later
     if(type == TYPE_UNDEF) {
         return 0;
     }
 
-    //bare return requires Unit
+    //return bez hodnoty ma byt unit
     if(type != TYPE_UNIT) {
         return 6;
     }
@@ -810,7 +789,6 @@ static int semantic_check_return(const tree_node_t *node,const tree_node_t *retu
 }
 
 
-//check returns in one function body
 static int semantic_check_returns(const tree_node_t *node,const tree_node_t *return_type) {
     
     if(node == NULL) {
@@ -820,7 +798,7 @@ static int semantic_check_returns(const tree_node_t *node,const tree_node_t *ret
     int error = 0;
 
     if(node->type == NODE_NONTERMINAL) {
-        //another function has its own return type
+        //do vnorene funkce nejde, ma vlastni navratovy typ
         if(node->rule == RULE_FUNCTION_DEF) {
             return 0;
         }
@@ -845,7 +823,6 @@ static int semantic_check_returns(const tree_node_t *node,const tree_node_t *ret
 }
 
 
-//check main and function bodies
 static int semantic_check_node(const tree_node_t *node) {
     if(node == NULL) {
         return 0;
@@ -857,7 +834,6 @@ static int semantic_check_node(const tree_node_t *node) {
         switch(node->rule) {
             case RULE_TOP_ITEM_1:
                 
-            //main cant have parameters
                 if(semantic_count_params(node->children[2]->children[2]) != 0) {
                     return 5;
                 }
@@ -900,7 +876,6 @@ static int semantic_check_node(const tree_node_t *node) {
 
 
 
-//check a declaration with a simple initializer
 static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope, SemanticInfo *info) {
     
     const tree_node_t *name = node->children[1];
@@ -954,6 +929,7 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
         type = declared_type;
     }
 
+    //promennou pridava az po kontrole hodnoty(aby se nevidela ve vlastni deklaraci0
     int inserted = symtable_insert(&scope->variables, name->token.data);
     if(inserted == RET_DUPLICATE) {
         return 4;
@@ -985,7 +961,6 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
     return 0;
 }
 
-//add parameters to the function scope
 static int semantic_bind_parameters(const tree_node_t *node, SemanticScope *scope, SemanticInfo *info) {
     if(node->type != NODE_NONTERMINAL) {
         return 0;
@@ -1034,7 +1009,7 @@ static int semantic_bind_parameters(const tree_node_t *node, SemanticScope *scop
 }
 
 
-//walk the tree and give each block its own scope
+//kazda funkce,blok , vlastni tabulka promennych
 static int semantic_check_variables(const tree_node_t *node, SemanticScope *scope, const SymTable *functions,SemanticInfo *info) {
     if(node==NULL || node->type!=NODE_NONTERMINAL) {
         return 0;
@@ -1064,7 +1039,7 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
     if(node->rule == RULE_FUNCTION_DEF) {
         error = semantic_bind_parameters(node->children[2], scope, info);
 
-        //type an inline function body
+        //kdyz je telo funkce vyraz, zjisti typ hned po pridani param
         const tree_node_t *rhs = node->children[5];
         if(error == 0 && rhs->rule == RULE_RHS_2) {
             
