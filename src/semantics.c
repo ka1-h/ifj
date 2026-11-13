@@ -340,7 +340,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
         return semantic_save_type(info, node, *result);
     }
 
-    
+
 
     if(node->rule != RULE_EXPRESSION) {
         return 0;
@@ -368,17 +368,34 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
 
     t_type operation = node->children[1]->token.type;
+    bool is_comparison = false;
+    bool is_equality = false;
+
     switch(operation) {
         case T_PLUS:
         case T_MINUS:
         case T_MULT:
         case T_DIV:
             break;
-        
+
+        case T_LT:
+        case T_LOET:
+        case T_GT:
+        case T_GOET:
+            is_comparison = true;
+            break;
+
+        case T_ET:
+        case T_NET:
+            is_comparison = true;
+            is_equality = true;
+            break;
+
+
+
         default:
             return 0;
     }
-
 
     const tree_node_t *left = node->children[0];
     const tree_node_t *right = node->children[2];
@@ -395,6 +412,10 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
     }
 
 
+    if(left_type==TYPE_BOOL || right_type==TYPE_BOOL) {
+        return 6;
+    }
+
     if(left_type==TYPE_UNDEF || right_type==TYPE_UNDEF) {
         return 0;
     }
@@ -404,14 +425,30 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
         return semantic_save_type(info, node, *result);
     }
 
-    if((left_type!=TYPE_INT && left_type!=TYPE_DOUBLE) || (right_type!=TYPE_INT && right_type!=TYPE_DOUBLE )) {
+    if(is_equality && left_type == right_type) {
+        *result = TYPE_BOOL;
+        return semantic_save_type(info, node, *result);
+    }
+
+    if(is_comparison && left_type == TYPE_STRING && right_type == TYPE_STRING) {
+        *result = TYPE_BOOL;
+        return semantic_save_type(info, node, *result);
+    }
+
+    bool left_is_number = left_type==TYPE_INT || left_type==TYPE_DOUBLE;
+    bool right_is_number = right_type==TYPE_INT || right_type==TYPE_DOUBLE;
+
+    if(!left_is_number || !right_is_number) {
         return 6;
     }
 
 
-    *result = TYPE_INT;
-    if(left_type==TYPE_DOUBLE || right_type==TYPE_DOUBLE) {
+    if(is_comparison) {
+        *result = TYPE_BOOL;
+    }else if (left_type==TYPE_DOUBLE || right_type==TYPE_DOUBLE) {
         *result = TYPE_DOUBLE;
+    }else {
+        *result = TYPE_INT;
     }
 
 
@@ -933,8 +970,12 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
     if(error != 0) {
         return error;
     }
+
     if(type == TYPE_UNDEF) {
         return 0;
+    }
+    if(type == TYPE_BOOL) {
+        return 6;
     }
 
 
@@ -1033,8 +1074,12 @@ static int semantic_check_assignment(const tree_node_t *node, const SemanticScop
     if(error != 0) {
         return error;
     }
+    
     if(value_type == TYPE_UNDEF || variable_type == TYPE_UNDEF) {
         return 0;
+    }
+    if(value_type == TYPE_BOOL) {
+        return 6;
     }
 
     if(variable_type == value_type) {
@@ -1106,6 +1151,26 @@ static int semantic_bind_parameters(const tree_node_t *node, SemanticScope *scop
 }
 
 
+static int semantic_check_condition(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info) {
+    
+    const tree_node_t *condition = node->children[1];
+    DataType condition_type;
+
+    int error = semantic_type_expression(condition,scope, info, &condition_type);
+    if(error != 0) {
+        return error;
+    }
+
+    if(condition_type != TYPE_BOOL ) {
+        return 6;
+    }
+
+
+
+    return 0;
+}
+
+
 //kazda funkce,blok , vlastni tabulka promennych
 static int semantic_check_variables(const tree_node_t *node, SemanticScope *scope, const SymTable *functions,SemanticInfo *info) {
     if(node==NULL || node->type!=NODE_NONTERMINAL) {
@@ -1149,12 +1214,14 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
             }
         }
 
-    }else if (node->rule == RULE_VAR_DEFINITION && scope != NULL) {
+    }else if (node->rule==RULE_VAR_DEFINITION && scope!=NULL) {
         error = semantic_check_variable(node, scope, info);
 
-    }else if (node->rule == RULE_ID_STATEMENT_1 && scope != NULL) {
+    }else if (node->rule==RULE_ID_STATEMENT_1 && scope!=NULL) {
         error = semantic_check_assignment(node, scope, info);
 
+    }else if (node->rule==RULE_IF_STATEMENT || node->rule==RULE_WHILE_STATEMENT) {
+        error = semantic_check_condition(node, scope, info);
     }
 
     for(size_t idx = 0; idx < node->children_count && error == 0; idx++) {
