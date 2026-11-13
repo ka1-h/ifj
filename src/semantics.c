@@ -228,7 +228,7 @@ typedef struct SemanticScope {
 
 
 
-static int semantic_resolve_variable(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
+static int semantic_resolve_variable(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result, bool *can_change) {
     const char *name = node->token.data;
 
     while(scope != NULL) {
@@ -261,6 +261,11 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
                     *result = symbol->var.type;
                     use->type = *result;
                     use->declaration = declaration;
+
+                    if(can_change != NULL) {
+                        *can_change = symbol->var.is_mutable;
+                    }
+
                     return 0;
                 }
             }
@@ -273,8 +278,7 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
     }
 
 
-    *result = TYPE_UNDEF;
-    return 0;
+    return 3;
 }
 
 
@@ -293,7 +297,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
     if(node->type == NODE_TERMINAL) {
         if(node->token.type == T_ID) {
-            return semantic_resolve_variable(node, scope, info, result);
+            return semantic_resolve_variable(node, scope, info, result, NULL);
         }
                 
         
@@ -310,6 +314,33 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
         return semantic_type_call(node, scope, info, result);
     }
 
+
+    if(node->rule == RULE_EXPRESSION_UNARY) {
+        const tree_node_t *operation = node->children[0];
+        const tree_node_t *operand = node->children[1];
+
+        if(operation->token.type != T_MINUS) {
+            return 0;
+        }
+
+        int error = semantic_type_expression(operand, scope, info, result);
+        if(error != 0) {
+            return error;
+        }
+
+        if(*result == TYPE_UNDEF) {
+            return 0;
+        }
+
+        
+        if(*result != TYPE_INT && *result != TYPE_DOUBLE) {
+            return 6;
+        }
+
+        return semantic_save_type(info, node, *result);
+    }
+
+    
 
     if(node->rule != RULE_EXPRESSION) {
         return 0;
@@ -961,6 +992,72 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
     return 0;
 }
 
+
+static int semantic_check_assignment(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info) {
+    
+    const tree_node_t *name = node->parent->children[0];
+    const tree_node_t *rhs = node->children[1];
+
+    DataType variable_type;
+    bool can_change;
+
+    int error = semantic_resolve_variable(name, scope, info, &variable_type, &can_change);
+    //leva strana musi byt uz definovana a musi jit menit
+    if(error == 3) {
+        return 7;
+    }
+    if(error != 0) {
+        return error;
+    }
+    if(!can_change) {
+        return 7;
+    }
+
+    if(rhs->rule != RULE_RHS_2) {
+        return 0;
+    }
+
+
+    const tree_node_t *value = rhs->children[0];
+    if(value->rule != RULE_VALUE_2) {
+        return 0;
+    }
+    if(value->children[1]->rule != RULE_MATCH_SUFFIX_2) {
+        return 0;
+    }
+
+    const tree_node_t *expression = value->children[0];
+    DataType value_type;
+    
+    error = semantic_type_expression(expression, scope, info, &value_type);
+    if(error != 0) {
+        return error;
+    }
+    if(value_type == TYPE_UNDEF || variable_type == TYPE_UNDEF) {
+        return 0;
+    }
+
+    if(variable_type == value_type) {
+        return 0;
+    }
+
+
+    if(variable_type == TYPE_DOUBLE && value_type == TYPE_INT) {
+        SemanticNodeInfo *item = semantic_info_get_or_add(info, expression);
+        if(item == NULL) {
+            return 99;
+        }
+
+        item->promote_to_double = true;
+        return 0;
+    }
+
+
+
+    return 6;
+}
+
+
 static int semantic_bind_parameters(const tree_node_t *node, SemanticScope *scope, SemanticInfo *info) {
     if(node->type != NODE_NONTERMINAL) {
         return 0;
@@ -1054,6 +1151,10 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
 
     }else if (node->rule == RULE_VAR_DEFINITION && scope != NULL) {
         error = semantic_check_variable(node, scope, info);
+
+    }else if (node->rule == RULE_ID_STATEMENT_1 && scope != NULL) {
+        error = semantic_check_assignment(node, scope, info);
+
     }
 
     for(size_t idx = 0; idx < node->children_count && error == 0; idx++) {
