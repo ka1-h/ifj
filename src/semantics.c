@@ -281,7 +281,91 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
     return 3;
 }
 
+typedef struct {
+    size_t param_count;
+    DataType param_types[3];
+    DataType return_type;
+    bool accepts_any_type;
+} BuiltinFunction;
 
+static bool semantic_get_builtin(const char *name, BuiltinFunction *builtin) {
+    builtin->accepts_any_type = false;
+
+    if(strcmp(name, "print")==0) {
+        builtin->param_count = 1;
+        builtin->return_type = TYPE_UNIT;
+        builtin->accepts_any_type = true;
+        return true;
+
+    }
+
+    if(strcmp(name, "readLine")==0) {
+        builtin->param_count = 0;
+        builtin->return_type = TYPE_STRING;
+        return true;
+    }
+
+    if(strcmp(name, "readInt")==0) {
+        builtin->param_count = 0;
+        builtin->return_type = TYPE_INT;
+        return true;
+    }
+
+    if(strcmp(name, "readDouble")==0) {
+        builtin->param_count = 0;
+        builtin->return_type = TYPE_DOUBLE;
+        return true;
+    }
+
+
+    if(strcmp(name, "toStr")==0) {
+        builtin->param_count = 1;
+        builtin->return_type = TYPE_STRING;
+        builtin->accepts_any_type = true;
+        return true;
+    }
+
+    if(strcmp(name, "toInt")==0) {
+        builtin->param_count = 1;
+        builtin->param_types[0] = TYPE_DOUBLE;
+        builtin->return_type = TYPE_INT;
+        return true;
+    }
+
+    if(strcmp(name, "strLength")==0) {
+        builtin->param_count = 1;
+        builtin->param_types[0] = TYPE_STRING;
+        builtin->return_type = TYPE_INT;
+        return true;
+    }
+
+    if(strcmp(name, "subStr")==0) {
+        builtin->param_count = 3;
+        builtin->param_types[0] = TYPE_STRING;
+        builtin->param_types[1] = TYPE_INT;
+        builtin->param_types[2] = TYPE_INT;
+        builtin->return_type = TYPE_STRING;
+        return true;
+    }
+
+    if(strcmp(name, "ord")==0) {
+        builtin->param_count = 2;
+        builtin->param_types[0] = TYPE_STRING;
+        builtin->param_types[1] = TYPE_INT;
+        builtin->return_type = TYPE_INT;
+        return true;
+    }
+
+
+    if(strcmp(name, "chr")==0) {
+        builtin->param_count = 1;
+        builtin->param_types[0] = TYPE_INT;
+        builtin->return_type = TYPE_STRING;
+        return true;
+    }
+
+    return false;
+}
 
 
 static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result);
@@ -488,40 +572,57 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
 
 
 
-    const char *name = node->children[0]->token.data;
-    
-    Symbol *function = symtable_lookup(scope->functions, name);
-    if(function == NULL || function->type != SYM_FUNC) {
-        return 0;
-    }
+        const char *name = node->children[0]->token.data;
+        const tree_node_t *definition = NULL;
+        const DataType *param_types;
+        size_t param_count;
+        DataType return_type;
+        bool accepts_any_type = false;
 
-    const tree_node_t *definition = NULL;
+        BuiltinFunction builtin;
+        Symbol *function = symtable_lookup(scope->functions, name);
 
-    for(size_t idx = 0; idx < info->count; idx++) {
-        const tree_node_t *candidate = info->items[idx].node;
+        if(function == NULL || function->type != SYM_FUNC) {
+            if(!semantic_get_builtin(name, &builtin)) {
+                return 3;
+            }
 
-        if(candidate->rule==RULE_FUNCTION_DEF && strcmp(candidate->children[1]->token.data, name) == 0) {
-            definition = candidate;
-            break;
+            param_types = builtin.param_types;
+            param_count = builtin.param_count;
+            return_type = builtin.return_type;
+            accepts_any_type = builtin.accepts_any_type;
+        }else {
+            for(size_t idx = 0; idx < info->count; idx++) {
+                const tree_node_t *candidate = info->items[idx].node;
+
+                if(candidate->rule == RULE_FUNCTION_DEF &&
+                    strcmp(candidate->children[1]->token.data, name) == 0) {
+                    definition = candidate;
+                    break;
+                }
+            }
+
+            if(definition == NULL) {
+                return 99;
+            }
+
+            const tree_node_t *params = definition->children[2];
+            if(params->rule != RULE_PARAM_LISTS_1) {
+                return 0;
+            }
+
+            const tree_node_t *next_list = params->children[params->children_count - 1];
+            if(next_list->rule != RULE_PARAM_LISTS_2) {
+                return 0;
+            }
+
+            param_types = function->func.param_types;
+            param_count = function->func.param_count;
+            return_type = function->func.return_type;
         }
-    }
 
-    if(definition == NULL) {
-        return 99;
-    }
-
-
-    const tree_node_t *params = definition->children[2];
-    if(params->rule != RULE_PARAM_LISTS_1) {
-        return 0;
-    }
-    const tree_node_t *next_list = params->children[params->children_count-1];
-    if(next_list->rule != RULE_PARAM_LISTS_2) {
-        return 0;
-    }
-
-    const tree_node_t *args = node->children[1];
     size_t arg_index = 0;
+    const tree_node_t *args = node->children[1];
 
     for(size_t idx = 0; idx < args->children_count; idx++) {
     
@@ -539,7 +640,7 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
         }
 
 
-        if(arg_index >= function->func.param_count) {
+        if(arg_index >= param_count) {
             return 5;
         }
 
@@ -551,8 +652,23 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
             return error;
         }
 
-        DataType expected = function->func.param_types[arg_index];
-        if(actual==TYPE_UNDEF || expected==TYPE_UNDEF) {
+
+        if(actual == TYPE_BOOL) {
+            return 5;
+        }
+
+        if(actual == TYPE_UNDEF) {
+            return 0;
+        }
+
+        //u print a toStr nemusim porovnavat typ argumentu
+        if(accepts_any_type) {
+            arg_index++;
+            continue;
+        }
+
+        DataType expected = param_types[arg_index];
+        if(expected == TYPE_UNDEF) {
             return 0;
         }
 
@@ -573,7 +689,7 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
     }
 
 
-    if(arg_index != function->func.param_count) {
+    if(arg_index != param_count) {
         return 5;
     }
 
@@ -583,7 +699,7 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
         return 99;
     }
 
-    *result = function->func.return_type;
+    *result = return_type;
     item->type = *result;
     item->declaration = definition;
 
@@ -1171,6 +1287,30 @@ static int semantic_check_condition(const tree_node_t *node, const SemanticScope
 }
 
 
+static int semantic_check_expression_statement(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info) {
+    
+    if(node->children[1]->rule != RULE_MATCH_SUFFIX_2) {
+        return 0;
+    }
+
+    const tree_node_t *expression = node->children[0];
+    DataType type;
+    
+    int error = semantic_type_expression(expression, scope,info, &type);
+    if(error != 0) {
+        return error;
+    }
+
+    if(type == TYPE_BOOL) {
+        return 6;
+    }
+
+
+
+    return 0;
+}
+
+
 //kazda funkce,blok , vlastni tabulka promennych
 static int semantic_check_variables(const tree_node_t *node, SemanticScope *scope, const SymTable *functions,SemanticInfo *info) {
     if(node==NULL || node->type!=NODE_NONTERMINAL) {
@@ -1222,6 +1362,8 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
 
     }else if (node->rule==RULE_IF_STATEMENT || node->rule==RULE_WHILE_STATEMENT) {
         error = semantic_check_condition(node, scope, info);
+    }else if (node->rule == RULE_ID_STATEMENT_2 || node->rule == RULE_INLINE_STATEMENT_6) {
+        error = semantic_check_expression_statement(node, scope, info);
     }
 
     for(size_t idx = 0; idx < node->children_count && error == 0; idx++) {
