@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "scanner.h"
 #include "syntactic.h"
+#include "semantics.h"
 
 int main(int argc, char *argv[]){
     FILE *src = stdin;
@@ -27,6 +28,12 @@ int main(int argc, char *argv[]){
 
 
     int result = parser.error;
+
+    if(result == 0){
+        result = semantic_check(root);
+    }
+
+    
     tree_dispose(&root);
     parser_free(&parser);
     if(src != stdin){
