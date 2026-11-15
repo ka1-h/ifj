@@ -3,6 +3,7 @@
 #include "scanner.h"
 #include "syntactic.h"
 #include "semantics.h"
+#include "generator.h"
 
 int main(int argc, char *argv[]){
     FILE *src = stdin;
@@ -28,12 +29,16 @@ int main(int argc, char *argv[]){
 
 
     int result = parser.error;
+    SemanticInfo info = {NULL, 0, 0};
 
     if(result == 0){
-        result = semantic_check(root);
+        result = semantic_check_with_info(root, &info);
+    }
+    if(result == 0) {
+        result = generate_code(root, &info, stdout);
     }
 
-    
+    semantic_info_free(&info);
     tree_dispose(&root);
     parser_free(&parser);
     if(src != stdin){
