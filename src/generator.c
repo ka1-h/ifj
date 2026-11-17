@@ -57,7 +57,7 @@ static size_t decl_id(gen_t *g, const tree_node_t *decl) {
 
 // name in the source: VAR_DEFINITION has it as child 1, PARAM as child 0
 static const char *decl_name(const tree_node_t *decl) {
-    int idx = (decl->rule == RULE_PARAM) ? 0 : 1;
+    int idx = (decl->rule == RULE_VAR_DEFINITION) ? 1 : 0;
     return decl->children[idx]->token.data;
 }
 
@@ -487,6 +487,75 @@ static void gen_while(gen_t *g, const tree_node_t *node, bool keep) {
     }
 }
 
+// evaluates all guards of a for header, a false guard skips the body
+static void gen_guards(gen_t *g, const tree_node_t *node, int n) {
+    if (node->type != NODE_NONTERMINAL) {
+        return;
+    }
+    if (node->rule == RULE_INLINE_GUARDS_1 || node->rule == RULE_GUARD_LINES_1) {
+        gen_expr(g, node->children[1]);
+        emit(g, "PUSHS bool@true");
+        emit(g, "JUMPIFNEQS $for%d$next", n);
+    }
+    for (size_t i = 0; i < node->children_count; i++) {
+        gen_guards(g, node->children[i], n);
+    }
+}
+
+// FOR_STATEMENT children: for, FOR_HEADER, do, BODY
+// GENERATOR children: id, <-, EXPRESSION, RANGE_OP, EXPRESSION, STEP
+static void gen_for(gen_t *g, const tree_node_t *node, bool keep) {
+    int n = g->labels++;
+    const tree_node_t *header = node->children[1];
+    const tree_node_t *gen = header->rule == RULE_FOR_HEADER_1 ? header->children[0] : header->children[2];
+    const tree_node_t *step = gen->children[5];
+    bool until = gen->children[3]->rule == RULE_RANGE_OP_2;
+    const char *name = decl_name(gen);
+    size_t id = decl_id(g, gen);
+
+    // start, end and step are evaluated only once, before the loop
+    gen_expr(g, gen->children[2]);
+    emit(g, "POPS LF@%s$%zu", name, id);
+    gen_expr(g, gen->children[4]);
+    emit(g, "POPS LF@$end$%zu", id);
+    if (step->rule == RULE_STEP_1) {
+        gen_expr(g, step->children[1]);
+        emit(g, "POPS LF@$step$%zu", id);
+        emit(g, "JUMPIFNEQ $for%d$start LF@$step$%zu int@0", n, id);
+        emit(g, "EXIT int@40");
+    } else {
+        emit(g, "MOVE LF@$step$%zu int@1", id);
+    }
+
+    // end test: step > 0 -> stop when i > end (until: i >= end)
+    // step < 0 -> stop when i < end
+    emit(g, "LABEL $for%d$start", n);
+    emit(g, "GT GF@$t1 LF@$step$%zu int@0", id);
+    emit(g, "JUMPIFEQ $for%d$down GF@$t1 bool@false", n);
+    if (until) {
+        emit(g, "LT GF@$t1 LF@%s$%zu LF@$end$%zu", name, id, id);
+        emit(g, "JUMPIFEQ $for%d$end GF@$t1 bool@false", n);
+    } else {
+        emit(g, "GT GF@$t1 LF@%s$%zu LF@$end$%zu", name, id, id);
+        emit(g, "JUMPIFEQ $for%d$end GF@$t1 bool@true", n);
+    }
+    emit(g, "JUMP $for%d$body", n);
+    emit(g, "LABEL $for%d$down", n);
+    emit(g, "LT GF@$t1 LF@%s$%zu LF@$end$%zu", name, id, id);
+    emit(g, "JUMPIFEQ $for%d$end GF@$t1 bool@true", n);
+
+    emit(g, "LABEL $for%d$body", n);
+    gen_guards(g, header, n);
+    gen_body(g, node->children[3], false);
+    emit(g, "LABEL $for%d$next", n);
+    emit(g, "ADD LF@%s$%zu LF@%s$%zu LF@$step$%zu", name, id, name, id, id);
+    emit(g, "JUMP $for%d$start", n);
+    emit(g, "LABEL $for%d$end", n);
+    if (keep) {
+        emit(g, "PUSHS nil@nil");
+    }
+}
+
 static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
     if (node->rule == RULE_INLINE_STATEMENT_1) {
         gen_return(g, node->children[0]);
@@ -498,6 +567,10 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
     }
     if (node->rule == RULE_INLINE_STATEMENT_3) { // while
         gen_while(g, node->children[0], keep);
+        return;
+    }
+    if (node->rule == RULE_INLINE_STATEMENT_4) { // for
+        gen_for(g, node->children[0], keep);
         return;
     }
     if (node->rule == RULE_INLINE_STATEMENT_5) {
@@ -607,6 +680,18 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
         emit(g, "DEFVAR LF@%s$%zu", decl_name(v), decl_id(g, v));
     }
     free(locals.items);
+
+    // for loop variables and their hidden end and step
+    node_list_t loops = {0};
+    collect(g, def->children[5], RULE_GENERATOR, &loops);
+    for (size_t i = 0; i < loops.count; i++) {
+        const tree_node_t *v = loops.items[i];
+        size_t id = decl_id(g, v);
+        emit(g, "DEFVAR LF@%s$%zu", decl_name(v), id);
+        emit(g, "DEFVAR LF@$end$%zu", id);
+        emit(g, "DEFVAR LF@$step$%zu", id);
+    }
+    free(loops.items);
 
     // body
     gen_rhs(g, def->children[5]);
