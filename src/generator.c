@@ -1,6 +1,7 @@
 # include "generator.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -92,7 +93,7 @@ static void emit_var(gen_t *g, const char *instr, const tree_node_t *id_leaf) {
 }
 
 // LITERALS
-// 1_000 -> int@1000
+// writes an Int literal without underscores
 static void emit_int(gen_t *g, const char *text) {
     fputs("PUSHS int@", g->out);
     for (const char *c = text; *c; c++) {
@@ -125,7 +126,7 @@ static void put_char(gen_t *g, unsigned char c) {
     }
 }
 
-// "..." with escape sequences, or """..."""
+// writes a string literal
 static void emit_string(gen_t *g, const char *text) {
     size_t len = strlen(text);
     fputs("PUSHS string@", g->out);
@@ -180,25 +181,90 @@ static const tree_node_t *call_arg(const tree_node_t *args, size_t n) {
     return NULL;
 }
 
-//function call: every call leaves exactly one value on the stack
-static void gen_call(gen_t *g, const tree_node_t *call) {
-    const char *name = call->children[0]->token.data;
-    const tree_node_t *args = call->children[1];
+// pushes all arguments of all argument lists, left to right
+static void push_args(gen_t *g, const tree_node_t *call) {
+    for (size_t l = 1; l < call->children_count; l++) {
+        const tree_node_t *args = call->children[l];
+        for (size_t i = 0; i < args->children_count; i++) {
+            if (args->children[i]->type == NODE_NONTERMINAL) {
+                gen_value(g, args->children[i]);
+            }
+        }
+    }
+}
 
+// type of the first argument of a call
+static DataType first_arg_type(gen_t *g, const tree_node_t *call) {
+    const tree_node_t *arg = call_arg(call->children[1], 0);
+    return arg ? expr_type(g, arg->children[0]) : TYPE_UNDEF;
+}
+
+// built-in functions that need only a few stack instructions. returns false if name is not one of them.
+static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *call) {
     if (strcmp(name, "print") == 0) {
-        const tree_node_t *arg = call_arg(args, 0);
-        gen_value(g, arg);
+        push_args(g, call);
         emit(g, "POPS GF@$t1");
-        if (expr_type(g, arg->children[0]) == TYPE_UNIT) {
+        if (first_arg_type(g, call) == TYPE_UNIT) {
             emit(g, "WRITE string@()");
         } else {
             emit(g, "WRITE GF@$t1");
         }
         emit(g, "PUSHS nil@nil");
+    } else if (strcmp(name, "toStr") == 0) {
+        push_args(g, call);
+        switch(first_arg_type(g, call)) {
+            case TYPE_INT:
+                emit(g, "INT2STRS"); 
+                break;
+            case TYPE_DOUBLE:
+                emit(g, "FLOAT2STRS"); 
+                break;
+            case TYPE_STRING:
+                break;
+            case TYPE_UNIT:
+                emit(g, "POPS GF@$t1");
+                emit(g, "PUSHS string@()");
+                break;
+            default:
+                emit(g, "# TODO toStr of this type");
+                break;
+        }
+    } else if (strcmp(name, "toInt") == 0) {
+        push_args(g, call);
+        emit(g, "FLOAT2INTS");
+    } else if (strcmp(name, "chr") == 0) {
+        push_args(g, call);
+        emit(g, "INT2CHARS");
+    } else if (strcmp(name, "strLength") == 0) {
+        push_args(g, call);
+        emit(g, "POPS GF@$t1");
+        emit(g, "STRLEN GF@$t3 GF@$t1");
+        emit(g, "PUSHS GF@$t3");
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// built-in functions written as helper functions 
+static bool is_helper_builtin(const char *name) {
+    return strcmp(name, "readLine") == 0 || strcmp(name, "readInt") == 0 || strcmp(name, "readDouble") == 0 || strcmp(name, "subStr") == 0 || strcmp(name, "ord") == 0;
+}
+
+//function call: every call leaves exactly one value on the stack
+static void gen_call(gen_t *g, const tree_node_t *call) {
+    const char *name = call->children[0]->token.data;
+
+    if (gen_simple_builtin(g, name, call)) {
         return;
     }
-    emit(g, "# TODO call %s", name);
-    emit(g, "PUSHS nil@nil");
+    push_args(g, call);
+    emit(g, "CREATEFRAME");
+    if (is_helper_builtin(name)) {
+        emit(g, "CALL $b_%s", name);
+    } else {
+        emit(g, "CALL $f_%s", name);
+    }
 }
 
 // -x as 0 - x, !x as NOT x
@@ -315,18 +381,34 @@ static void gen_value(gen_t *g, const tree_node_t *value) {
     emit(g, "PUSHS nil@nil");
 }
 
+static void gen_block(gen_t *g, const tree_node_t *block, bool keep);
+
 // RHS: value
 static void gen_rhs(gen_t *g, const tree_node_t *rhs) {
     if (rhs->rule == RULE_RHS_2) {
         gen_value(g, rhs->children[0]);
-        return;
+    } else {
+        gen_block(g, rhs->children[0], true);
     }
-    emit(g, "# TODO block as value");
-    emit(g, "PUSHS nil@nil");
 }
 
 // STATEMENTS
-static void gen_inline(gen_t *g, const tree_node_t *node) {
+static void gen_return(gen_t *g, const tree_node_t *ret) {
+    const tree_node_t *val = ret->children[1];
+    if (val->rule == RULE_RETURN_VALUE_1) {
+        gen_value(g, val->children[0]);
+    } else {
+        emit(g, "PUSHS nil@nil");
+    }
+    emit(g, "POPFRAME");
+    emit(g, "RETURN");
+}
+
+static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
+    if (node->rule == RULE_INLINE_STATEMENT_1) {
+        gen_return(g, node->children[0]);
+        return;
+    }
     if (node->rule == RULE_INLINE_STATEMENT_5) {
         const tree_node_t *rest = node->children[node->children_count - 1];
         if (rest->rule == RULE_ID_STATEMENT_1) { // x = value
@@ -334,44 +416,58 @@ static void gen_inline(gen_t *g, const tree_node_t *node) {
             emit_var(g, "POPS", node->children[0]);
         } else { // expression starting with id, result is thrown away
             gen_expr(g, rest->children[0]);
+            if (!keep) {
+                emit(g, "POPS GF@$t1");
+            }
+            return;
+        }
+    } else if (node->rule == RULE_INLINE_STATEMENT_6) { // expression as statement
+        gen_expr(g, node->children[0]);
+        if (!keep) {
             emit(g, "POPS GF@$t1");
         }
         return;
+    } else {
+        emit(g, "# TODO statement");
     }
-    if (node->rule == RULE_INLINE_STATEMENT_6) { // expression as statement
-        gen_expr(g, node->children[0]);
-        emit(g, "POPS GF@$t1");
-        return;
+    if (keep) {
+        emit(g, "PUSHS nil@nil");
     }
-    emit(g, "# TODO statement");
 }
 
 // STATEMENT_1 = val/var definition, STATEMENT_2 = other statements
-static void gen_statement(gen_t *g, const tree_node_t *stmt) {
+static void gen_statement(gen_t *g, const tree_node_t *stmt, bool keep) {
     if (stmt->rule == RULE_STATEMENT_1) {
         const tree_node_t *def = stmt->children[0]; // VAR_DEFINITION
         gen_rhs(g, def->children[4]);
         emit(g, "POPS LF@%s$%zu", decl_name(def), decl_id(g, def));
+        if (keep) {
+            emit(g, "PUSHS nil@nil");
+        }
     } else {
-        gen_inline(g, stmt->children[0]);
+        gen_inline(g, stmt->children[0], keep);
     }
 }
 
 // one line: statement
-static void gen_statement_line(gen_t *g, const tree_node_t *line) {
-    gen_statement(g, line->children[0]);
+static void gen_statement_line(gen_t *g, const tree_node_t *line, bool keep) {
+    const tree_node_t *stmt = line->children[0];
     for (const tree_node_t *r = line->children[1]; r->rule == RULE_STATEMENT_LINE_REST_1; r = r->children[2]) {
-        gen_statement(g, r->children[1]);
+        gen_statement(g, stmt, false);
+        stmt = r->children[1];
     }
+    gen_statement(g, stmt, keep);
 }
 
 // block children: \n, INDENT, STATEMENT_LIST, DEDENT
-static void gen_block(gen_t *g, const tree_node_t *block) {
+static void gen_block(gen_t *g, const tree_node_t *block, bool keep) {
     const tree_node_t *list = block->children[2];
-    gen_statement_line(g, list->children[0]);
+    const tree_node_t *line = list->children[0];
     for (const tree_node_t *r = list->children[1]; r->rule == RULE_STATEMENT_LIST_REST_1; r = r->children[1]) {
-        gen_statement_line(g, r->children[0]);
+        gen_statement_line(g, line, false);
+        line = r->children[0];
     }
+    gen_statement_line(g, line, keep);
 }
 
 // FUNCTIONS
@@ -420,17 +516,107 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
     free(locals.items);
 
     // body
-    const tree_node_t *rhs = def->children[5];
-    if (rhs->rule == RULE_RHS_1) {
-        gen_block(g, rhs->children[0]);
-    } else {
-        gen_rhs(g, rhs);
-        emit(g, "POPS GF@$t1");
-    }
-
-    emit(g, "PUSHS nil@nil");
+    gen_rhs(g, def->children[5]);
     emit(g, "POPFRAME");
     emit(g, "RETURN");
+}
+
+// helper functions for built-ins that need jumps
+static void gen_builtins(gen_t *g) {
+    // readLine(): READ returns nil at EOF -> ""
+    emit(g, "# --- builtin readLine ---");
+    emit(g, "LABEL $b_readLine");
+    emit(g, "READ GF@$t1 string");
+    emit(g, "JUMPIFNEQ $b_readLine$ok GF@$t1 nil@nil");
+    emit(g, "MOVE GF@$t1 string@");
+    emit(g, "LABEL $b_readLine$ok");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+
+    // readInt(), readDouble(): nil on the bad input -> 0
+    emit(g, "# --- builtin readInt ---");
+    emit(g, "LABEL $b_readInt");
+    emit(g, "READ GF@$t1 int");
+    emit(g, "JUMPIFNEQ $b_readInt$ok GF@$t1 nil@nil");
+    emit(g, "MOVE GF@$t1 int@0");
+    emit(g, "LABEL $b_readInt$ok");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+
+    emit(g, "# --- builtin readDouble ---");
+    emit(g, "LABEL $b_readDouble");
+    emit(g, "READ GF@$t1 float");
+    emit(g, "JUMPIFNEQ $b_readDouble$ok GF@$t1 nil@nil");
+    emit(g, "MOVE GF@$t1 float@0x0p+0");
+    emit(g, "LABEL $b_readDouble$ok");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+
+    // ord(s, i): -1 if i is out of range
+    emit(g, "# --- builtin ord ---");
+    emit(g, "LABEL $b_ord");
+    emit(g, "PUSHFRAME");
+    emit(g, "DEFVAR LF@s");
+    emit(g, "DEFVAR LF@i");
+    emit(g, "DEFVAR LF@len");
+    emit(g, "DEFVAR LF@cond");
+    emit(g, "POPS LF@i");
+    emit(g, "POPS LF@s");
+    emit(g, "STRLEN LF@len LF@s");
+    emit(g, "LT LF@cond LF@i int@0");
+    emit(g, "JUMPIFEQ $b_ord$bad LF@cond bool@true");
+    emit(g, "LT LF@cond LF@i LF@len");
+    emit(g, "JUMPIFEQ $b_ord$bad LF@cond bool@false");
+    emit(g, "PUSHS LF@s");
+    emit(g, "PUSHS LF@i");
+    emit(g, "STRI2INTS");
+    emit(g, "POPFRAME");
+    emit(g, "RETURN");
+    emit(g, "LABEL $b_ord$bad");
+    emit(g, "PUSHS int@-1");
+    emit(g, "POPFRAME");
+    emit(g, "RETURN");
+
+    // subStr(s, start, end): error 40 for bad indexes
+    emit(g, "# --- builtin subStr ---");
+    emit(g, "LABEL $b_subStr");
+    emit(g, "PUSHFRAME");
+    emit(g, "DEFVAR LF@s");
+    emit(g, "DEFVAR LF@a");
+    emit(g, "DEFVAR LF@b");
+    emit(g, "DEFVAR LF@len");
+    emit(g, "DEFVAR LF@cond");
+    emit(g, "DEFVAR LF@c");
+    emit(g, "DEFVAR LF@res");
+    emit(g, "DEFVAR LF@tmp");
+    emit(g, "POPS LF@b");
+    emit(g, "POPS LF@a");
+    emit(g, "POPS LF@s");
+    emit(g, "STRLEN LF@len LF@s");
+    emit(g, "LT LF@cond LF@a int@0"); // start < 0
+    emit(g, "JUMPIFEQ $b_subStr$err LF@cond bool@true");
+    emit(g, "LT LF@cond LF@b int@0"); // end < 0
+    emit(g, "JUMPIFEQ $b_subStr$err LF@cond bool@true");
+    emit(g, "GT LF@cond LF@a LF@b"); // start > end
+    emit(g, "JUMPIFEQ $b_subStr$err LF@cond bool@true");
+    emit(g, "LT LF@cond LF@a LF@len"); // start >= length
+    emit(g, "JUMPIFEQ $b_subStr$err LF@cond bool@false");
+    emit(g, "GT LF@cond LF@b LF@len"); // end > length
+    emit(g, "JUMPIFEQ $b_subStr$err LF@cond bool@true");
+    emit(g, "MOVE LF@res string@");
+    emit(g, "LABEL $b_subStr$loop");
+    emit(g, "JUMPIFEQ $b_subStr$end LF@a LF@b");
+    emit(g, "GETCHAR LF@c LF@s LF@a");
+    emit(g, "CONCAT LF@tmp LF@res LF@c");
+    emit(g, "MOVE LF@res LF@tmp");
+    emit(g, "ADD LF@a LF@a int@1");
+    emit(g, "JUMP $b_subStr$loop");
+    emit(g, "LABEL $b_subStr$end");
+    emit(g, "PUSHS LF@res");
+    emit(g, "POPFRAME");
+    emit(g, "RETURN");
+    emit(g, "LABEL $b_subStr$err");
+    emit(g, "EXIT int@40");
 }
 
 int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) {
@@ -466,6 +652,7 @@ int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) 
             gen_function(&g, def);
         }
     }
+    gen_builtins(&g);
     free(g.decls.items);
     return g.error;
 }

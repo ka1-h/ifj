@@ -1,0 +1,22 @@
+import ifj26.*
+
+def add(a: Int, b: Int): Int = a + b
+
+def half(x: Double): Double =
+    return x / 2
+
+def greet(name: String): Unit =
+    print("Ahoj " + name + "\n")
+
+@main def main(): Unit =
+    val n = readInt()
+    print(add(n, 3) * 2)
+    print("\n")
+    print(half(5))
+    print("\n")
+    greet("svet")
+    val s = "programovanie"
+    print(subStr(s, 0, 7) + " " + toStr(strLength(s)) + " " + toStr(ord(s, 1)) + chr(33))
+    print("\n")
+    print(toStr(2.5) + " " + toStr(toInt(7.9)))
+    print("\n")
