@@ -17,6 +17,7 @@ typedef struct {
     const SemanticInfo *info;
     node_list_t decls;
     int error;
+    int labels; // counter for unique label numbers
 } gen_t;
 
 // writes one line of code
@@ -155,7 +156,20 @@ static void emit_string(gen_t *g, const char *text) {
 
 // EXRESSIONS
 static void gen_expr(gen_t *g, const tree_node_t *node);
-static void gen_value(gen_t *g, const tree_node_t *value);
+static void gen_if(gen_t *g, const tree_node_t *node, bool keep);
+
+static void gen_value(gen_t *g, const tree_node_t *value) {
+    if (value->rule == RULE_VALUE_1) { // if as a value
+        gen_if(g, value->children[0], true);
+        return;
+    }
+    if (value->rule == RULE_VALUE_2 && value->children[1]->rule == RULE_MATCH_SUFFIX_2) {
+        gen_expr(g, value->children[0]);
+        return;
+    }
+    emit(g, "# TODO value");
+    emit(g, "PUSHS nil@nil");
+}
 
 // leaf: variable or literal
 static void gen_term(gen_t *g, const tree_node_t *leaf) {
@@ -371,16 +385,6 @@ static void gen_expr(gen_t *g, const tree_node_t *node) {
     }
 }
 
-// VALUE: expression
-static void gen_value(gen_t *g, const tree_node_t *value) {
-    if (value->rule == RULE_VALUE_2 && value->children[1]->rule == RULE_MATCH_SUFFIX_2) {
-        gen_expr(g, value->children[0]);
-        return;
-    }
-    emit (g, "# TODO value");
-    emit(g, "PUSHS nil@nil");
-}
-
 static void gen_block(gen_t *g, const tree_node_t *block, bool keep);
 
 // RHS: value
@@ -404,9 +408,66 @@ static void gen_return(gen_t *g, const tree_node_t *ret) {
     emit(g, "RETURN");
 }
 
+static void gen_inline(gen_t *g, const tree_node_t *node, bool keep);
+
+// BODY of if/while: block, one statement, or unary expression
+static void gen_body(gen_t *g, const tree_node_t *body, bool keep) {
+    if (body->rule == RULE_BODY_1) {
+        gen_block(g, body->children[0], keep);
+    } else if (body->rule == RULE_BODY_2) {
+        gen_inline(g, body->children[0], keep);
+    } else {
+        gen_expr(g, body->children[0]);
+        if (!keep) {
+            emit(g, "POPS GF@$t1");
+        }
+    }
+}
+
+// IF_STATEMENT children: if, EXPRESSION, then, BODY, ELSE_PART
+static void gen_if(gen_t *g, const tree_node_t *node, bool keep) {
+    int n = g->labels++;
+    gen_expr(g, node->children[1]);
+    emit(g, "PUSHS bool@true");
+    emit(g, "JUMPIFNEQS $if%d$else", n);
+    gen_body(g, node->children[3], keep);
+    emit(g, "JUMP $if%d$end", n);
+    emit(g, "LABEL $if%d$else", n);
+    const tree_node_t *else_part = node->children[4];
+    if (else_part->rule == RULE_ELSE_PART_1) {
+        gen_body(g, else_part->children[1], keep);
+    } else if (keep) {
+        emit(g, "PUSHS nil@nil");
+    }
+    emit(g, "LABEL $if%d$end", n);
+}
+
+// WHILE_STATEMENT children: whie, EXPRESSION, do, BODY
+static void gen_while(gen_t *g, const tree_node_t *node, bool keep) {
+    int n = g-> labels++;
+    emit(g, "LABEL $while%d", n);
+    gen_expr(g, node->children[1]);
+    emit(g, "PUSHS bool@true");
+    emit(g, "JUMPIFNEQS $while%d$end", n);
+    gen_body(g, node->children[3], false);
+    emit(g, "JUMP $while%d", n);
+    emit(g, "LABEL $while%d$end", n);
+    if (keep) {
+        emit(g, "PUSHS nil@nil");
+    }
+}
+
 static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
     if (node->rule == RULE_INLINE_STATEMENT_1) {
         gen_return(g, node->children[0]);
+        return;
+    }
+    if (node->rule == RULE_INLINE_STATEMENT_2) { // if
+        gen_if(g, node->children[0], keep);
+        return;
+    }
+    if (node->rule == RULE_INLINE_STATEMENT_3) { // while
+        gen_while(g, node->children[0], keep);
         return;
     }
     if (node->rule == RULE_INLINE_STATEMENT_5) {
@@ -434,6 +495,8 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
         emit(g, "PUSHS nil@nil");
     }
 }
+
+
 
 // STATEMENT_1 = val/var definition, STATEMENT_2 = other statements
 static void gen_statement(gen_t *g, const tree_node_t *stmt, bool keep) {
@@ -620,7 +683,7 @@ static void gen_builtins(gen_t *g) {
 }
 
 int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) {
-    gen_t g = {out, info, {0}, 0};
+    gen_t g = {out, info, {0}, 0, 0};
 
     const tree_node_t *top = tree_get_child(root, 2);
 
