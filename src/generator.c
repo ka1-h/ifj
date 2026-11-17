@@ -179,7 +179,7 @@ static void gen_term(gen_t *g, const tree_node_t *leaf) {
         case T_DOUBLE: emit_double(g, leaf->token.data); break;
         case T_STRING: emit_string(g, leaf->token.data); break;
         case T_UNIT_BRACKETS: emit(g, "PUSHS nil@nil"); break;
-        case KW_TRUE: emit(g, "PUSHS bol@true"); break;
+        case KW_TRUE: emit(g, "PUSHS bool@true"); break;
         case KW_FALSE: emit(g, "PUSHS bool@false"); break;
         default: g->error = 99; break;
     }
@@ -239,6 +239,17 @@ static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *ca
                 emit(g, "POPS GF@$t1");
                 emit(g, "PUSHS string@()");
                 break;
+            case TYPE_BOOL: { // true -> "true", false -> "false"
+                int n = g->labels++;
+                emit(g, "PUSHS bool@true");
+                emit(g, "JUMPIFEQS $str%d$true", n);
+                emit(g, "PUSHS string@false");
+                emit(g, "JUMP $str%d$end", n);
+                emit(g, "LABEL $str%d$true", n);
+                emit(g, "PUSHS string@true");
+                emit(g, "LABEL $str%d$end", n);
+                break;
+            }
             default:
                 emit(g, "# TODO toStr of this type");
                 break;
@@ -262,7 +273,8 @@ static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *ca
 
 // built-in functions written as helper functions 
 static bool is_helper_builtin(const char *name) {
-    return strcmp(name, "readLine") == 0 || strcmp(name, "readInt") == 0 || strcmp(name, "readDouble") == 0 || strcmp(name, "subStr") == 0 || strcmp(name, "ord") == 0;
+    return strcmp(name, "readLine") == 0 || strcmp(name, "readInt") == 0 || strcmp(name, "readDouble") == 0 || strcmp(name, "subStr") == 0 || strcmp(name, "ord") == 0
+    || strcmp(name, "readBoolean") == 0;
 }
 
 //function call: every call leaves exactly one value on the stack
@@ -298,14 +310,32 @@ static void gen_unary(gen_t *g, const tree_node_t *node) {
     emit(g, "SUBS");
 }
 
+// a && b, a || b with short-ciruit evaluation: the right side is evaluated only if the left side does not decide
+static void gen_logic(gen_t *g, const tree_node_t *left, const tree_node_t *right, bool is_and) {
+    int n = g->labels++;
+    const char *stop = is_and ? "false" : "true";
+    gen_expr(g, left);
+    emit(g, "PUSHS bool@%s", stop);
+    emit(g, "JUMPIFEQS $logic%d$short", n); // elft == stop -> result is stop
+    gen_expr(g, right); // otherwise result = right
+    emit(g, "JUMP $logic%d$end", n);
+    emit(g, "LABEL $logic%d$short", n);
+    emit(g, "PUSHS bool@%s", stop);
+    emit(g, "LABEL $logic%d$end", n);
+}
+
 // E op E: both operands on the stack, then one stack instruction
 static void gen_binary(gen_t *g, const tree_node_t *node) {
     const tree_node_t *left = node->children[0];
     const tree_node_t *right = node->children[2];
     t_type op = node->children[1]->token.type;
 
-    if (op == T_DOT || op == T_AND || op == T_OR) {
-        emit(g, "# TODO operator %s", node->children[1]->token.data);
+    if (op == T_AND || op == T_OR) { // short-circuit evaluation
+        gen_logic(g, left, right, op == T_AND);
+        return;
+    }
+    if (op == T_DOT) {
+        emit(g, "# TODO operator .");
         emit(g, "PUSHS nil@nil");
         return;
     }
@@ -612,6 +642,13 @@ static void gen_builtins(gen_t *g) {
     emit(g, "JUMPIFNEQ $b_readDouble$ok GF@$t1 nil@nil");
     emit(g, "MOVE GF@$t1 float@0x0p+0");
     emit(g, "LABEL $b_readDouble$ok");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+
+    // readBoolean(): behaves like READ bool
+    emit(g, "# --- builtin readBoolean ---");
+    emit(g, "LABEL $b_readBoolean");
+    emit(g, "READ GF@$t1 bool");
     emit(g, "PUSHS GF@$t1");
     emit(g, "RETURN");
 
