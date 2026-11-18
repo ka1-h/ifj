@@ -1,0 +1,9 @@
+import ifj26.*
+
+def add(a: Int, b: Int): Int =
+    val s = 1
+    s
+
+@main def main(): Unit =
+    val x = 1
+    var y = 2

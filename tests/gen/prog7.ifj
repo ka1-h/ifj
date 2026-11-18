@@ -1,0 +1,30 @@
+import ifj26.*
+
+@main def main(): Unit =
+    var x = -5
+    val absolute = if x < 0 then 0 - x else x
+    print(absolute)
+    print("\n")
+    for i <- 1 to 10 by 3 do
+        print(i)
+        print(" ")
+    print("\n")
+    for i <- 6 to 2 by 0 - 2 do print(toStr(i) + " ")
+    print("\n")
+    for i <- 0 until 3 do
+        print(i)
+    print("\n")
+    var sum = 0
+    val limit = 10
+    for
+        i <- 0 until limit
+        if i != 3
+        if i < 8 && i > 1
+    do
+        sum = sum + i
+    print(sum)
+    print("\n")
+    for j <- 1 to 0 do print("nikdy")
+    val d: Double = if x > 0 then 1 else 2.5
+    print(d)
+    print("\n")
