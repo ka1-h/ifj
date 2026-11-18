@@ -61,6 +61,21 @@ static const char *decl_name(const tree_node_t *decl) {
     return decl->children[idx]->token.data;
 }
 
+// FUNCTION_DEF children
+static const char *function_name(const tree_node_t *def) {
+    return def->children[1]->token.data;
+}
+
+// EXTENSION_DEF that contains a method, or NULL for a normal function
+static const tree_node_t *method_extension(const tree_node_t *def) {
+    for (const tree_node_t *n = def->parent; n; n = n->parent) {
+        if (n->rule == RULE_EXTENSION_DEF) {
+            return n;
+        }
+    }
+    return NULL;
+}
+
 // finds all nodes with the given rule in the subtree
 static void collect(gen_t *g, const tree_node_t *node, tree_rule_t rule, node_list_t *out) {
     if (!node || node->type != NODE_NONTERMINAL || node->rule == RULE_VALUE_EXPRESSION) {
@@ -344,11 +359,20 @@ static void gen_unary(gen_t *g, const tree_node_t *node) {
 
 // receiver.member (valmem): toString, toInt, floor, length
 // member is EXPRESSION with one child: the member name
-static void gen_member(gen_t *g, const tree_node_t *receiver, const tree_node_t *member) {
-    const tree_node_t*leaf = member->children[0];
-    if (leaf->type != NODE_TERMINAL) {
-        emit(g, "# TODO method call");
-        emit(g, "PUSHS nil@nil");
+// node is the whole "receiver . member" expression
+static void gen_member(gen_t *g, const tree_node_t *node) {
+    const tree_node_t *receiver = node->children[0];
+    const tree_node_t *member = node->children[2];
+    const tree_node_t *leaf = member->children[0];
+
+    const SemanticNodeInfo *i = semantic_info_find(g->info, node);
+    if (i && i->declaration && i->declaration->rule == RULE_FUNCTION_DEF) {
+        gen_expr(g, receiver);
+        if (leaf->type != NODE_TERMINAL) {
+            push_args(g, leaf);
+        }
+        emit(g, "CREATEFRAME");
+        emit(g, "CALL $m_%s$%zu", function_name(i->declaration), decl_id(g, i->declaration));
         return;
     }
     const char *name = leaf->token.data;
@@ -409,7 +433,7 @@ static void gen_binary(gen_t *g, const tree_node_t *node) {
         return;
     }
     if (op == T_DOT) { // member access
-        gen_member(g, left, right);
+        gen_member(g, node);
         return;
     }
 
@@ -722,15 +746,17 @@ static const tree_node_t *item_function(const tree_node_t *item) {
     }
 }
 
-// FUNCTION_DEF children
-static const char *function_name(const tree_node_t *def) {
-    return def->children[1]->token.data;
-}
-
 // generates one function: label, its own frame, body, return
 static void gen_function(gen_t *g, const tree_node_t *def) {
     emit(g, "# --- function %s ---", function_name(def));
-    emit(g, "LABEL $f_%s", function_name(def));
+    
+    // extension methods get a unique label
+    const tree_node_t *ext = method_extension(def);
+    if (ext) {
+        emit(g, "LABEL $m_%s$%zu", function_name(def), decl_id(g, def));
+    } else {
+        emit(g, "LABEL $f_%s", function_name(def));
+    }
     emit(g, "PUSHFRAME");
     
     node_list_t params = {0};
@@ -744,6 +770,13 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
         emit(g, "POPS LF@%s$%zu", decl_name(p), decl_id(g, p));
     }
     free(params.items);
+
+    // method receiver (PARAM of the extension) was pushed first
+    if (ext) {
+        const tree_node_t *r = ext->children[2];
+        emit(g, "DEFVAR LF@%s$%zu", decl_name(r), decl_id(g, r));
+        emit(g, "POPS LF@%s$%zu", decl_name(r), decl_id(g, r));
+    }
 
     // all local variables defined once, at the start of the function
     node_list_t locals = {0};
@@ -908,6 +941,14 @@ int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) 
         const tree_node_t *def = item_function(list->children[0]);
         if (def) {
             gen_function(&g, def);
+        }
+        if (list->children[0]->rule == RULE_TOP_ITEM_5) { // extension
+            node_list_t methods = {0};
+            collect(&g, list->children[0], RULE_FUNCTION_DEF, &methods);
+            for (size_t i = 0; i < methods.count; i++) {
+                gen_function(&g, methods.items[i]);
+            }
+            free(methods.items);
         }
     }
     gen_builtins(&g);
