@@ -4,8 +4,21 @@
 #include "tree.h"
 
 typedef struct {
+    DataType type;
+    const tree_node_t *declaration;
+} SemanticTypeMember;
+
+
+typedef struct {
+    SemanticTypeMember *members;
+    size_t count;
+}SemanticType;
+
+
+typedef struct {
     const tree_node_t *node;
     DataType type;
+    SemanticType full_type;
     const tree_node_t *declaration;
     bool promote_to_double;
     const tree_node_t *scope_owner;
