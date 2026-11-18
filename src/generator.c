@@ -171,17 +171,44 @@ static void gen_value(gen_t *g, const tree_node_t *value) {
     emit(g, "PUSHS nil@nil");
 }
 
+// identifier: variable, or a function without parameters called without parentheses (PARAMLISTS)
+static void gen_id(gen_t *g, const tree_node_t *leaf) {
+    const SemanticNodeInfo *i = semantic_info_find(g->info, leaf);
+    if (i && i->declaration && i->declaration->rule == RULE_FUNCTION_DEF) {
+        emit(g, "CREATEFRAME");
+        emit(g, "CALL $f_%s", leaf->token.data);
+        return;
+    }
+    emit_var(g, "PUSHS", leaf);
+}
+
 // leaf: variable or literal
 static void gen_term(gen_t *g, const tree_node_t *leaf) {
     switch (leaf->token.type) {
-        case T_ID: emit_var(g, "PUSHS", leaf); break;
-        case T_INT: emit_int(g, leaf->token.data); break;
-        case T_DOUBLE: emit_double(g, leaf->token.data); break;
-        case T_STRING: emit_string(g, leaf->token.data); break;
-        case T_UNIT_BRACKETS: emit(g, "PUSHS nil@nil"); break;
-        case KW_TRUE: emit(g, "PUSHS bool@true"); break;
-        case KW_FALSE: emit(g, "PUSHS bool@false"); break;
-        default: g->error = 99; break;
+        case T_ID:
+            gen_id(g, leaf);
+            break;
+        case T_INT:
+            emit_int(g, leaf->token.data);
+            break;
+        case T_DOUBLE:
+            emit_double(g, leaf->token.data);
+            break;
+        case T_STRING:
+            emit_string(g, leaf->token.data);
+            break;
+        case T_UNIT_BRACKETS:
+            emit(g, "PUSHS nil@nil");
+            break;
+        case KW_TRUE:
+            emit(g, "PUSHS bool@true");
+            break;
+        case KW_FALSE:
+            emit(g, "PUSHS bool@false");
+            break;
+        default:
+            g->error = 99;
+            break;
     }
 }
 
