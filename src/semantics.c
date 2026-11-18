@@ -160,6 +160,19 @@ static int semantic_read_full_type(const tree_node_t *node, const SemanticInfo *
                 const SemanticNodeInfo *item = &info->items[idx];
                 const tree_node_t *definition = item->node;
 
+                
+                if(definition->rule == RULE_CASE_CLASS_DEF) {
+                    const char *class_name = definition->children[2]->token.data;
+
+                    if(strcmp(class_name, name) == 0) {
+                        
+                        return semantic_add_type_member(type, TYPE_UNDEF, definition);
+                    }
+
+                    continue;
+                }
+                
+                
                 if(definition->rule != RULE_TYPE_DEF) {
                     continue;
                 }
@@ -226,6 +239,13 @@ static int semantic_collect_type_aliases(const tree_node_t *node, SemanticInfo *
         for(size_t idx = 0; idx < info->count; idx++) {
             const tree_node_t *definition = info->items[idx].node;
 
+
+            if(definition->rule == RULE_CASE_CLASS_DEF) {
+                if(strcmp(definition->children[2]->token.data, name)==0) {
+                    return 4;
+                }
+            }
+
             if(definition->rule==RULE_TYPE_DEF && strcmp(definition->children[1]->token.data, name) == 0) {
                 return 4;
             }
@@ -262,6 +282,47 @@ static int semantic_collect_type_aliases(const tree_node_t *node, SemanticInfo *
     return 0;
 }
 
+
+//ulozi nazvy trid, aby je slo pouzit v typech
+static int semantic_collect_class_names(const tree_node_t *node, SemanticInfo *info) {
+    if(node == NULL) {
+        return 0;
+    }
+
+    if(node->type==NODE_NONTERMINAL && node->rule==RULE_CASE_CLASS_DEF) {
+        const char *name = node->children[2]->token.data;
+
+        for(size_t idx = 0; idx < info->count; idx++) {
+            
+            const tree_node_t *definition = info->items[idx].node;
+
+            if(definition->rule != RULE_CASE_CLASS_DEF) {
+                continue;
+            }
+
+            if(strcmp(definition->children[2]->token.data, name) == 0) {
+                return 4;
+            }
+        }
+
+        SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+        if(item == NULL) {
+            return 99;
+        }
+
+        return semantic_add_type_member(&item->full_type, TYPE_UNDEF, node);
+    }
+
+    for(size_t idx = 0; idx < node->children_count; idx++) {
+        int error = semantic_collect_class_names(node->children[idx], info);
+
+        if(error != 0) {
+            return error;
+        }
+    }
+
+    return 0;
+}
 
 //spocita parametry funkce v stromu
 static size_t semantic_count_params(const tree_node_t *node) {
@@ -329,7 +390,84 @@ static DataType semantic_get_type(const tree_node_t *node) {
     }
 }
 
+//najde extension(ke ktere patri metoda)
+static const tree_node_t *semantic_find_extension(const tree_node_t *node) {
+    node = node->parent;
 
+    while(node != NULL) {
+        if(node->rule == RULE_EXTENSION_DEF) {
+            return node;
+        }
+
+        node = node->parent;
+    }
+
+    return NULL;
+}
+
+
+//metody ruznych typu maji v tabulce ruzne klice
+static char *semantic_function_key(const tree_node_t *function) {
+    const char *name = function->children[1]->token.data;
+    const tree_node_t *extension = semantic_find_extension(function);
+
+    size_t size = strlen(name) + 32;
+    char *key = malloc(size);
+
+    if(key == NULL) {
+        return NULL;
+    }
+
+    if(extension == NULL) {
+        strcpy(key, name);
+    }else {
+        DataType type = semantic_get_type(extension->children[2]->children[2]);
+        snprintf(key, size, "%d:%s", (int)type, name);
+    }
+
+    return key;
+}
+
+
+static Symbol *semantic_find_function_symbol(const SymTable *functions, const tree_node_t *function) {
+    char *key = semantic_function_key(function);
+
+    if(key == NULL) {
+        return NULL;
+    }
+
+    Symbol *symbol = symtable_lookup(functions, key);
+    free(key);
+
+    return symbol;
+}
+
+
+static const tree_node_t *semantic_find_method(const SemanticInfo *info, const char *name, DataType receiver_type) {
+    
+    for(size_t idx = 0; idx < info->count; idx++) {
+        const tree_node_t *function = info->items[idx].node;
+
+        if(function->rule != RULE_FUNCTION_DEF) {
+            continue;
+        }
+
+        const tree_node_t *extension = semantic_find_extension(function);
+        if(extension == NULL) {
+            continue;
+        }
+
+        DataType type = semantic_get_type(extension->children[2]->children[2]);
+
+        if(type == receiver_type &&
+           strcmp(function->children[1]->token.data, name) == 0) {
+            return function;
+        }
+    }
+
+
+    return NULL;
+}
 
 //ulozi typy parametru(pole)
 static void semantic_get_param_types(const tree_node_t *node, DataType *param_types, size_t *position) {
@@ -436,6 +574,16 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
 
                 }else if (declaration->rule==RULE_PARAM || declaration->rule==RULE_GENERATOR) {
                     declared_name = declaration->children[0];
+                }
+
+                if(declaration->rule == RULE_FUNCTION_DEF) {
+                    
+                    const tree_node_t *extension = semantic_find_extension(declaration);
+
+                    if(extension != NULL) {
+                        declaration = extension->children[2];
+                        declared_name = declaration->children[0];
+                    }
                 }
 
 
@@ -570,7 +718,7 @@ static bool semantic_get_builtin(const char *name, BuiltinFunction *builtin) {
 static int semantic_check_variables(const tree_node_t *node, SemanticScope *scope, const SymTable *functions, SemanticInfo *info);
 
 
-static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result);
+static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result, const tree_node_t *method);
 
 
 //podle clena a typu vlevo urci vysledny typ
@@ -661,7 +809,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
                 return error;
             }
 
-            return semantic_type_call(node, scope, info, result);
+            return semantic_type_call(node, scope, info, result, NULL);
         }
                 
         
@@ -675,7 +823,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
 
     if(node->rule == RULE_EXPRESSION_AFTER_ID) {
-        return semantic_type_call(node, scope, info, result);
+        return semantic_type_call(node, scope, info, result, NULL);
     }
 
 
@@ -702,10 +850,6 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
             return semantic_save_type(info, node, *result);
         }
 
-        
-        if(*result != TYPE_INT && *result != TYPE_DOUBLE) {
-            return 6;
-        }
 
         return semantic_save_type(info, node, *result);
     }
@@ -741,31 +885,57 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
     
     if(operation == T_DOT) {
         const tree_node_t *receiver = node->children[0];
-        const tree_node_t *member = node->children[2]->children[0];
+        const tree_node_t *member =node->children[2]->children[0];
 
-    
+        const char *name = member->token.data;
+
         if(member->type != NODE_TERMINAL) {
-            return 2;
+            name = member->children[0]->token.data;
         }
 
         DataType receiver_type;
+
         int error = semantic_type_expression(receiver, scope, info, &receiver_type);
         if(error != 0) {
             return error;
         }
 
+
         if(receiver_type == TYPE_UNDEF) {
             return 6;
         }
 
+        int member_error = semantic_get_member_type(name, receiver_type, result);
 
-        error = semantic_get_member_type(member->token.data, receiver_type, result);
+        if(member->type==NODE_TERMINAL && member_error==0) {
+            return semantic_save_type(info, node, *result);
+        }
+
+        const tree_node_t *method = semantic_find_method(info, name, receiver_type);
+
+        if(method == NULL) {
+            if(member->type!=NODE_TERMINAL && member_error!=3) {
+                return 2;
+            }
+
+            return member_error;
+        }
+
+        error = semantic_type_call(member, scope, info, result, method);
         if(error != 0) {
             return error;
         }
 
+        SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+        if(item == NULL) {
+            return 99;
+        }
 
-        return semantic_save_type(info, node, *result);
+
+        item->type = *result;
+        item->declaration = method;
+
+        return 0;
     }
     
     
@@ -896,7 +1066,7 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
 
 //kontroluje volani funkce, argumenty, navratovy typ
-static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
+static int semantic_type_call(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result, const tree_node_t *method) {
     
     if(scope == NULL) {
         return 0;
@@ -915,14 +1085,25 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
     }
 
 
-    const tree_node_t *definition = NULL;
+    const tree_node_t *definition = method;
     const DataType *param_types;
     size_t param_count;
     DataType return_type;
     bool accepts_any_type = false;
 
     BuiltinFunction builtin;
-    Symbol *function = symtable_lookup(scope->functions, name);
+    Symbol *function;
+
+    if(method == NULL) {
+        function = symtable_lookup(scope->functions, name);
+
+    }else {
+        function = semantic_find_function_symbol(scope->functions, method);
+
+        if(function == NULL) {
+            return 99;
+        }
+    }
 
     if(function == NULL || function->type != SYM_FUNC) {
         if(!semantic_get_builtin(name, &builtin)) {
@@ -937,8 +1118,7 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
         for(size_t idx = 0; idx < info->count; idx++) {
             const tree_node_t *candidate = info->items[idx].node;
 
-            if(candidate->rule == RULE_FUNCTION_DEF &&
-                strcmp(candidate->children[1]->token.data, name) == 0) {
+            if(definition==NULL && candidate->rule==RULE_FUNCTION_DEF && semantic_find_extension(candidate)==NULL && strcmp(candidate->children[1]->token.data, name)==0) {
                 definition = candidate;
                 break;
             }
@@ -1181,8 +1361,14 @@ static int semantic_get_function_data(const tree_node_t *node, FuncData *data) {
 
 
 //funkce do tabulky symbolu
-static int semantic_register_function(const tree_node_t *node, SymTable *functions,SemanticInfo *info) {
-    const char *name = node->children[1]->token.data;
+static int semantic_register_function(const tree_node_t *node, SymTable *functions, SemanticInfo *info) {
+    const tree_node_t *extension = semantic_find_extension(node);
+
+    if(extension != NULL &&
+       
+        semantic_get_type(extension->children[2]->children[2])==TYPE_UNDEF) {
+        return 6;
+    }
 
     FuncData data;
 
@@ -1191,9 +1377,25 @@ static int semantic_register_function(const tree_node_t *node, SymTable *functio
         return error;
     }
 
-    int result = symtable_insert(functions, name);
+    char *key =semantic_function_key(node);
+    if(key == NULL) {
+        free(data.param_types);
+        return 99;
+    }
+
+
+    int result = symtable_insert(functions, key);
+    Symbol *symbol = NULL;
+
+    if(result == RET_OK) {
+        symbol = symtable_lookup(functions, key);
+    }
+
+    free(key);
+
     if(result != RET_OK) {
         free(data.param_types);
+
         if(result == RET_DUPLICATE) {
             return 4;
         }
@@ -1201,8 +1403,6 @@ static int semantic_register_function(const tree_node_t *node, SymTable *functio
         return 99;
     }
 
-
-    Symbol *symbol = symtable_lookup(functions, name);
     if(symbol == NULL) {
         free(data.param_types);
         return 99;
@@ -1211,7 +1411,6 @@ static int semantic_register_function(const tree_node_t *node, SymTable *functio
     symbol->type = SYM_FUNC;
     symbol->func = data;
 
-
     SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
     if(item == NULL) {
         return 99;
@@ -1219,9 +1418,12 @@ static int semantic_register_function(const tree_node_t *node, SymTable *functio
 
     item->type = data.return_type;
 
+    if(extension != NULL) {
+        item->scope_owner = node;
+    }
+
     return 0;
 }
-
 
 
 //projde strom, ulozi definice funkci, spocita hlavni funkce
@@ -1254,6 +1456,12 @@ static int semantic_collect_functions(const tree_node_t *node, SymTable *functio
                 );
 
 
+            case RULE_FUNCTION_DEF:
+                if(semantic_find_extension(node) != NULL) {
+                    return semantic_register_function(node, functions, info);
+                }
+
+                break;
 
             default:
                 break;
@@ -2039,8 +2247,7 @@ static int semantic_finish_function(const tree_node_t *function, const SymTable 
             return error;
         }
 
-        const char *name = function->children[1]->token.data;
-        Symbol *symbol = symtable_lookup(functions, name);
+        Symbol *symbol = semantic_find_function_symbol(functions, function);
         if(symbol == NULL) {
             return 99;
         }
@@ -2244,7 +2451,34 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
     int error = 0;
 
     if(node->rule == RULE_FUNCTION_DEF) {
-        error = semantic_bind_parameters(node->children[2], scope, info);
+        const tree_node_t *extension = semantic_find_extension(node);
+
+        if(extension != NULL) {
+            const tree_node_t *receiver = extension->children[2];
+            const char *name = receiver->children[0]->token.data;
+
+            int inserted = symtable_insert(&scope->variables, name);
+
+            if(inserted != RET_OK) {
+                error = 99;
+            }else {
+                Symbol *symbol = symtable_lookup(&scope->variables, name);
+
+                if(symbol == NULL) {
+                    error = 99;
+
+                }else {
+                    symbol->type = SYM_VAR;
+                    symbol->var.type = semantic_get_type(receiver->children[2]);
+                    symbol->var.is_mutable = false;
+                }
+            }
+        }
+
+        if(error == 0) {
+            error = semantic_bind_parameters(node->children[2], scope, info);
+        }
+
         if(error == 0) {
             error = semantic_check_inline_body(node, scope, info);
         }
@@ -2299,7 +2533,11 @@ int semantic_check_with_info(const tree_node_t *root, SemanticInfo *info) {
 
     size_t main_count = 0;
 
-    int error = semantic_collect_type_aliases(root, info);
+    int error = semantic_collect_class_names(root, info);
+    if(error == 0) {
+        error = semantic_collect_type_aliases(root, info);
+    }
+
     if(error == 0) {
         error = semantic_collect_functions(root, &functions, &main_count, info);
     }
