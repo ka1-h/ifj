@@ -213,6 +213,38 @@ static DataType first_arg_type(gen_t *g, const tree_node_t *call) {
     return arg ? expr_type(g, arg->children[0]) : TYPE_UNDEF;
 }
 
+// moved from toStr: converts the value on the stack to a string
+static void emit_to_string(gen_t *g, DataType type) {
+    switch (type) {
+        case TYPE_INT:
+            emit(g, "INT2STRS");
+            break;
+        case TYPE_DOUBLE:
+            emit(g, "FLOAT2STRS");
+            break;
+        case TYPE_STRING:
+            break;
+        case TYPE_UNIT:
+            emit(g, "POPS GF@$t1");
+            emit(g, "PUSHS string@()");
+            break;
+        case TYPE_BOOL: {
+            int n = g->labels++;
+            emit(g, "PUSHS bool@true");
+            emit(g, "JUMPIFEQS $str%d$true", n);
+            emit(g, "PUSHS string@false");
+            emit(g, "JUMP $str%d$end", n);
+            emit(g, "LABEL $str%d$true", n);
+            emit(g, "PUSHS string@true");
+            emit(g, "LABEL $str%d$end", n);
+            break;
+        }
+        default:
+            emit(g, "# TODO toString of this type"); 
+            break;
+    }
+}
+
 // built-in functions that need only a few stack instructions. returns false if name is not one of them.
 static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *call) {
     if (strcmp(name, "print") == 0) {
@@ -226,34 +258,7 @@ static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *ca
         emit(g, "PUSHS nil@nil");
     } else if (strcmp(name, "toStr") == 0) {
         push_args(g, call);
-        switch(first_arg_type(g, call)) {
-            case TYPE_INT:
-                emit(g, "INT2STRS"); 
-                break;
-            case TYPE_DOUBLE:
-                emit(g, "FLOAT2STRS"); 
-                break;
-            case TYPE_STRING:
-                break;
-            case TYPE_UNIT:
-                emit(g, "POPS GF@$t1");
-                emit(g, "PUSHS string@()");
-                break;
-            case TYPE_BOOL: { // true -> "true", false -> "false"
-                int n = g->labels++;
-                emit(g, "PUSHS bool@true");
-                emit(g, "JUMPIFEQS $str%d$true", n);
-                emit(g, "PUSHS string@false");
-                emit(g, "JUMP $str%d$end", n);
-                emit(g, "LABEL $str%d$true", n);
-                emit(g, "PUSHS string@true");
-                emit(g, "LABEL $str%d$end", n);
-                break;
-            }
-            default:
-                emit(g, "# TODO toStr of this type");
-                break;
-        }
+        emit_to_string(g, first_arg_type(g, call));
     } else if (strcmp(name, "toInt") == 0) {
         push_args(g, call);
         emit(g, "FLOAT2INTS");
@@ -310,6 +315,48 @@ static void gen_unary(gen_t *g, const tree_node_t *node) {
     emit(g, "SUBS");
 }
 
+// receiver.member (valmem): toString, toInt, floor, length
+// member is EXPRESSION with one child: the member name
+static void gen_member(gen_t *g, const tree_node_t *receiver, const tree_node_t *member) {
+    const tree_node_t*leaf = member->children[0];
+    if (leaf->type != NODE_TERMINAL) {
+        emit(g, "# TODO method call");
+        emit(g, "PUSHS nil@nil");
+        return;
+    }
+    const char *name = leaf->token.data;
+    gen_expr(g, receiver);
+
+    if (strcmp(name, "toString") == 0) {
+        emit_to_string(g, expr_type(g, receiver));
+    } else if (strcmp(name, "toInt") == 0) {
+        emit(g, "FLOAT2INTS"); // cuts off decimal part
+    } else if (strcmp(name, "length") == 0) {
+        emit(g, "POPS GF@$t1");
+        emit(g, "STRLEN GF@$t3 GF@$t1");
+        emit(g, "PUSHS GF@$t3");
+    } else if (strcmp(name, "floor") == 0) {
+        int n = g->labels++;
+        emit(g, "POPS GF@$t1");
+        emit(g, "FLOAT2INT GF@$t2 GF@$t1");
+        emit(g, "INT2FLOAT GF@$t3 GF@$t2");
+        emit(g, "PUSHS GF@$t3");
+        emit(g, "PUSHS GF@$t1");
+        emit(g, "GTS");
+        emit(g, "PUSHS bool@true");
+        emit(g, "JUMPIFNEQS $floor%d$ok", n);
+        emit(g, "PUSHS GF@$t2");
+        emit(g, "PUSHS int@1");
+        emit(g, "SUBS");
+        emit(g, "POPS GF@$t2");
+        emit(g, "LABEL $floor%d$ok", n);
+        emit(g, "PUSHS GF@$t2");
+        emit(g, "INT2FLOATS");
+    } else {
+        g->error = 99;
+    }
+} 
+
 // a && b, a || b with short-ciruit evaluation: the right side is evaluated only if the left side does not decide
 static void gen_logic(gen_t *g, const tree_node_t *left, const tree_node_t *right, bool is_and) {
     int n = g->labels++;
@@ -334,9 +381,8 @@ static void gen_binary(gen_t *g, const tree_node_t *node) {
         gen_logic(g, left, right, op == T_AND);
         return;
     }
-    if (op == T_DOT) {
-        emit(g, "# TODO operator .");
-        emit(g, "PUSHS nil@nil");
+    if (op == T_DOT) { // member access
+        gen_member(g, left, right);
         return;
     }
 
