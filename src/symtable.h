@@ -63,7 +63,6 @@ unsigned long hash_djb2(const char *str);
 
 bool symtable_init(SymTable *t);
 void symtable_free(SymTable *t);
-static bool symtable_resize(SymTable *t, size_t new_size);
 int symtable_insert(SymTable *t, const char *key);   // NULL ak uz existuje alebo chyba alokacie 
 Symbol *symtable_lookup(const SymTable *t, const char *key);
 
