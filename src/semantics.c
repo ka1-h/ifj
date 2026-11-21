@@ -227,6 +227,176 @@ static int semantic_read_full_type(const tree_node_t *node, const SemanticInfo *
 }
 
 
+
+//ulozi vlastni kopii celeho typu
+static int semantic_store_full_type(SemanticInfo *info, const tree_node_t *node, const SemanticType *type) {
+    SemanticType copy = {0};
+
+    for(size_t idx = 0; idx < type->count; idx++) {
+        int error = semantic_add_type_member(&copy, type->members[idx].type, type->members[idx].declaration);
+
+        if(error != 0) {
+            free(copy.members);
+            return error;
+        }
+    }
+
+    SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+    if(item == NULL) {
+        free(copy.members);
+        return 99;
+    }
+
+    free(item->full_type.members);
+    item->full_type = copy;
+    item->type = TYPE_UNDEF;
+
+
+    if(copy.count == 1) {
+        item->type = copy.members[0].type;
+    }
+
+    return 0;
+}
+
+
+//najde cely typ vyrazu
+static const SemanticType *semantic_find_full_type(const SemanticInfo *info, const tree_node_t *node) {
+    if(node == NULL) {
+        return NULL;
+    }
+
+    const SemanticNodeInfo *item = semantic_info_find(info, node);
+
+    if(item!=NULL && item->full_type.count > 0) {
+        return &item->full_type;
+    }
+
+    if(node->rule==RULE_EXPRESSION && node->children_count==1) {
+        return semantic_find_full_type(info, node->children[0]);
+    }
+
+    return NULL;
+}
+
+
+//prevezme typ hodnoty, vcetne celeho sjednoceni
+static int semantic_copy_value_type(SemanticInfo *info, const tree_node_t *node, const tree_node_t *value, DataType type) {
+    const SemanticType *full_type = semantic_find_full_type(info, value);
+
+    if(full_type != NULL) {
+        return semantic_store_full_type(info, node, full_type);
+    }
+
+    if(type == TYPE_UNDEF) {
+        return 0;
+    }
+
+    SemanticTypeMember member = {type, NULL};
+    SemanticType simple ={&member, 1};
+
+    return semantic_store_full_type(info, node, &simple);
+}
+
+
+
+//ulozi typ uvedeny v anotaci
+static int semantic_store_annotation(SemanticInfo *info, const tree_node_t *node, const tree_node_t *annotation) {
+    SemanticType type = {0};
+
+    int error = semantic_read_full_type(annotation, info, &type);
+    if(error == 0) {
+        error = semantic_store_full_type(info, node, &type);
+    }
+
+    free(type.members);
+    return error;
+}
+
+
+
+static int semantic_check_full_value(const SemanticType *expected, const tree_node_t *expression, DataType actual_type, SemanticInfo *info, int error_code) {
+    SemanticTypeMember member = {actual_type, NULL};
+    SemanticType simple = {&member, 1};
+
+    const SemanticType *actual = semantic_find_full_type(info, expression);
+
+    if(actual == NULL) {
+        if(actual_type == TYPE_UNDEF) {
+            return 0;
+        }
+
+        actual = &simple;
+    }
+
+    bool convert = false;
+
+
+    for(size_t idx = 0; idx < actual->count; idx++) {
+        bool found = false;
+
+        for(size_t position = 0; position < expected->count; position++) {
+            if(actual->members[idx].type==expected->members[position].type &&
+               actual->members[idx].declaration==expected->members[position].declaration) {
+
+                found = true;
+                break;
+            }
+        }
+
+        if(!found && actual->count == 1 && actual->members[idx].type == TYPE_INT) {
+            for(size_t position = 0; position < expected->count; position++) {
+                
+                if(expected->members[position].type == TYPE_DOUBLE) {
+                    found = true;
+                    convert = true;
+                    break;
+                }
+            }
+        }
+
+        if(!found) {
+            return error_code;
+        }
+    }
+
+
+
+    if(convert && expression!=NULL) {
+        SemanticNodeInfo *item = semantic_info_get_or_add(info, expression);
+
+        if(item == NULL) {
+            return 99;
+        }
+
+        item->promote_to_double = true;
+    }
+
+    
+    return 0;
+}
+
+
+//porovna hodnotu s typem uvedenym v anotaci
+static int semantic_check_annotated_value(const tree_node_t *annotation,const tree_node_t *expression, DataType actual_type, SemanticInfo *info, int error_code, bool can_discard) {
+    SemanticType expected = {0};
+
+    int error = semantic_read_full_type(annotation, info, &expected);
+
+    if(error == 0) {
+        bool unit_result = expected.count==1 && expected.members[0].type==TYPE_UNIT;
+
+
+        if(!can_discard || !unit_result) {
+            error = semantic_check_full_value(&expected, expression, actual_type, info, error_code);
+        }
+    }
+
+    free(expected.members);
+    return error;
+}
+
+
 //ulozi aliasy v poradi v jakem jsou definovane
 static int semantic_collect_type_aliases(const tree_node_t *node, SemanticInfo *info) {
     if(node == NULL) {
@@ -529,16 +699,8 @@ static DataType semantic_literal_type(const tree_node_t *node) {
 
 
 //uklada typ k uzlu(pro generator)
-static int semantic_save_type(SemanticInfo *info, const tree_node_t *node,DataType type) {
-    
-    SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
-    if(item == NULL) {
-        return 99;
-    }
-
-
-    item->type = type;
-    return 0;
+static int semantic_save_type(SemanticInfo *info, const tree_node_t *node, DataType type) {
+    return semantic_copy_value_type(info, node, NULL, type);
 }
 
 
@@ -604,7 +766,7 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
                         *can_change = symbol->var.is_mutable;
                     }
 
-                    return 0;
+                    return semantic_copy_value_type(info, node, declaration, *result);
                 }
             }
 
@@ -841,6 +1003,10 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
         }
 
         if(*result == TYPE_UNDEF) {
+            if(semantic_find_full_type(info, operand) != NULL) {
+                return 6;
+            }
+
             return 0;
         }
 
@@ -862,22 +1028,12 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
 
 
     if(node->children_count == 1) {
-
         int error = semantic_type_expression(node->children[0], scope, info, result);
         if(error!=0) {
             return error;
         }
 
-
-        if(*result == TYPE_UNDEF) {
-            return 0;
-        }
-
-        return semantic_save_type(info, node, *result);
-    }
-
-    if (node->children_count != 3) {
-        return 0;
+        return semantic_copy_value_type(info, node, node->children[0], *result);
     }
 
 
@@ -989,6 +1145,12 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
     
 
     if(left_type==TYPE_UNDEF || right_type==TYPE_UNDEF) {
+        if((left_type==TYPE_UNDEF && semantic_find_full_type(info, left)!=NULL) ||
+           (right_type==TYPE_UNDEF && semantic_find_full_type(info, right)!=NULL)) {
+            return 6;
+        }
+
+
         return 0;
     }
 
@@ -1624,33 +1786,18 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
         return error;
     }
 
-    if(type == TYPE_UNDEF) {
+    if(type==TYPE_UNDEF && semantic_find_full_type(info, expression)==NULL) {
         return 0;
     }
     
 
 
-    if(annotation->rule == RULE_OPTIONAL_TYPE_1) {
-        DataType declared_type = semantic_get_type(annotation->children[1]);
-
-        if(declared_type == TYPE_UNDEF) {
-            return 0;
-        }
-
-        if(declared_type == TYPE_DOUBLE && type == TYPE_INT) {
-            SemanticNodeInfo *initializer = semantic_info_get_or_add(info, expression);
-            if (initializer == NULL) {
-                return 99;
+        if(annotation->rule == RULE_OPTIONAL_TYPE_1) {
+            error = semantic_check_annotated_value(annotation->children[1], expression, type, info, 6, false);
+            if(error != 0) {
+                return error;
             }
-
-
-            initializer->promote_to_double = true;
-        }else if (declared_type != type) {
-            return 6;
         }
-
-        type = declared_type;
-    }
 
     //promennou pridava az po kontrole hodnoty(aby se nevidela ve vlastni deklaraci0
     int inserted = symtable_insert(&scope->variables, name->token.data);
@@ -1681,6 +1828,21 @@ static int semantic_check_variable(const tree_node_t *node, SemanticScope *scope
 
     item->type = type;
     item->scope_owner = scope->owner;
+
+    if(annotation->rule == RULE_OPTIONAL_TYPE_1) {
+        error = semantic_store_annotation(info, node, annotation->children[1]);
+
+    }else {
+        error = semantic_copy_value_type(info, node, expression, type);
+    }
+
+    if(error != 0) {
+        return error;
+    }
+
+
+
+    symbol->var.type = semantic_info_find(info, node)->type;
     return 0;
 }
 
@@ -1723,29 +1885,24 @@ static int semantic_check_assignment(const tree_node_t *node, const SemanticScop
         return error;
     }
     
-    if(value_type == TYPE_UNDEF || variable_type == TYPE_UNDEF) {
-        return 0;
-    }
     
+    const SemanticType *expected = semantic_find_full_type(info, name);
 
-    if(variable_type == value_type) {
-        return 0;
-    }
-
-
-    if(variable_type == TYPE_DOUBLE && value_type == TYPE_INT) {
-        SemanticNodeInfo *item = semantic_info_get_or_add(info, expression);
-        if(item == NULL) {
-            return 99;
+    if(expected == NULL) {
+        if(variable_type == TYPE_UNDEF) {
+            return 0;
         }
 
-        item->promote_to_double = true;
-        return 0;
+        SemanticTypeMember member = {variable_type, NULL};
+        SemanticType simple = {&member, 1};
+
+        return semantic_check_full_value(&simple, expression, value_type, info, 6);
     }
 
-
-
-    return 6;
+    
+    
+    return semantic_check_full_value( expected, expression, value_type, info, 6);
+    
 }
 
 
