@@ -1,3 +1,5 @@
+// author: Daniel Čerešňa <xceresd00>
+
 #ifndef SYNTACTIC_H
 #define SYNTACTIC_H
 

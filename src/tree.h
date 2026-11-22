@@ -1,3 +1,5 @@
+// author: Daniel Čerešňa <xceresd00>
+
 #ifndef TREE_H
 #define TREE_H
 

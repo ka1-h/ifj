@@ -1,3 +1,5 @@
+// author: Daniel Čerešňa <xceresd00>
+
 #include "tree.h"
 
 #include <stdlib.h>

@@ -1,3 +1,5 @@
+// author: Daniel Čerešňa <xceresd00>
+
 #include <stdlib.h>
 #include <stdio.h>
 

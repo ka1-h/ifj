@@ -1,3 +1,5 @@
+// author: Daniel Čerešňa <xceresd00>
+
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 
