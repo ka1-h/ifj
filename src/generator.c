@@ -172,10 +172,15 @@ static void emit_string(gen_t *g, const char *text) {
 // EXRESSIONS
 static void gen_expr(gen_t *g, const tree_node_t *node);
 static void gen_if(gen_t *g, const tree_node_t *node, bool keep);
+static void gen_match(gen_t *g, const tree_node_t *node, bool keep);
 
 static void gen_value(gen_t *g, const tree_node_t *value) {
     if (value->rule == RULE_VALUE_1) { // if as a value
         gen_if(g, value->children[0], true);
+        return;
+    }
+    if (value->children[1]->rule == RULE_MATCH_SUFFIX_1) {
+        gen_match(g, value, true);
         return;
     }
     if (value->rule == RULE_VALUE_2 && value->children[1]->rule == RULE_MATCH_SUFFIX_2) {
@@ -321,12 +326,53 @@ static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *ca
 // built-in functions written as helper functions 
 static bool is_helper_builtin(const char *name) {
     return strcmp(name, "readLine") == 0 || strcmp(name, "readInt") == 0 || strcmp(name, "readDouble") == 0 || strcmp(name, "subStr") == 0 || strcmp(name, "ord") == 0
-    || strcmp(name, "readBoolean") == 0;
+    || strcmp(name, "readBoolean") == 0 || strcmp(name, "readIntMaybe") == 0 || strcmp(name, "readDoubleMaybe") == 0;
+}
+
+// index of a field (PARAM of a case class) in its object;
+// index 0 holds the class name, fields start at 1
+static int field_index(gen_t *g, const tree_node_t *param) {
+    const tree_node_t *def = param;
+    while (def && def->rule != RULE_CASE_CLASS_DEF) {
+        def = def->parent;
+    }
+    node_list_t fields = {0};
+    collect(g, def, RULE_PARAM, &fields);
+    int idx = 0;
+    for (size_t i = 0; i < fields.count; i++) {
+        if (fields.items[i] == param) {
+            idx = (int)i + 1;
+        }
+    }
+    free(fields.items);
+    return idx;
+}
+
+// creating array
+static void gen_constructor(gen_t *g, const tree_node_t *call, const tree_node_t *def) {
+    push_args(g, call);
+    node_list_t fields = {0};
+    collect(g, def, RULE_PARAM, &fields);
+    emit(g, "NEWARRAY GF@$t3 int@%zu", fields.count + 1);
+    emit(g, "ARRAYSET GF@$t3 int@0 string@%s", def->children[2]->token.data);
+    for (size_t i = fields.count; i > 0; i--) { // last argument on top
+        emit(g, "POPS GF@$t2");
+        emit(g, "ARRAYSET GF@$t3 int@%zu GF@$t2", i);
+    }
+    free(fields.items);
+    emit(g, "PUSHS GF@$t3");
 }
 
 //function call: every call leaves exactly one value on the stack
 static void gen_call(gen_t *g, const tree_node_t *call) {
     const char *name = call->children[0]->token.data;
+
+    // call of a case class = constructor
+    const SemanticNodeInfo *i = semantic_info_find(g->info, call);
+    if (i && i->declaration && i->declaration->rule == RULE_CASE_CLASS_DEF) {
+        gen_constructor(g, call, i->declaration);
+        return;
+    }
 
     if (gen_simple_builtin(g, name, call)) {
         return;
@@ -373,6 +419,15 @@ static void gen_member(gen_t *g, const tree_node_t *node) {
         }
         emit(g, "CREATEFRAME");
         emit(g, "CALL $m_%s$%zu", function_name(i->declaration), decl_id(g, i->declaration));
+        return;
+    }
+
+    // field of a case class
+    if (i && i->declaration && i->declaration->rule == RULE_PARAM) {
+        gen_expr(g, receiver);
+        emit(g, "POPS GF@$t1");
+        emit(g, "ARRAYGET GF@$t2 GF@$t1 int@%d", field_index(g, i->declaration));
+        emit(g, "PUSHS GF@$t2");
         return;
     }
     const char *name = leaf->token.data;
@@ -653,6 +708,145 @@ static void gen_for(gen_t *g, const tree_node_t *node, bool keep) {
     }
 }
 
+// IFJcode26 type name (result of TYPE) for a type in a pattern; for a case class returns "array" and sets *cls to the class name
+static const char *pattern_type(const tree_node_t *type, const char **cls) {
+    *cls = NULL;
+    const tree_node_t *simple = type->children[0];
+    switch (simple->rule) {
+        case RULE_SIMPLE_TYPE_1: return "int";
+        case RULE_SIMPLE_TYPE_2: return "float";
+        case RULE_SIMPLE_TYPE_3: return "string";
+        case RULE_SIMPLE_TYPE_4: return "nil";
+        case RULE_SIMPLE_TYPE_5: return "bool";
+        default:
+            *cls = simple->children[0]->token.data;
+            return "array";
+    }
+} 
+
+// jumps to fail unless var is an object of the case class cls
+static void test_class(gen_t *g, const char *var, const char *cls, const char *fail) {
+    emit(g, "TYPE GF@$t1 %s", var);
+    emit(g, "JUMPIFNEQ %s GF@$t1 string@array", fail);
+    emit(g, "ARRAYGET GF@$t1 %s int@0", var);
+    emit(g, "JUMPIFNEQ %s GF@$t1 string@%s", fail, cls);
+}
+
+// literal pattern: jumps to fail unless var equals it. the type is compared first, comparing different types is an error 53.
+static void test_literal(gen_t *g, const tree_node_t *lit, const char *var, const char *fail) {
+    const char *type;
+    switch (lit->rule) {
+        case RULE_LITERAL_PATTERN_1: 
+            type = "int";
+            break;
+        case RULE_LITERAL_PATTERN_2:
+            type = "float";
+            break;
+        case RULE_LITERAL_PATTERN_3:
+            type = "string";
+            break;
+        case RULE_LITERAL_PATTERN_4:
+            type = "bool";
+            break;
+        case RULE_LITERAL_PATTERN_5:
+            type = lit->children[1]->rule == RULE_NUMBER_1 ? "int" : "float";
+            break;
+        default: type = "nil"; break;
+    }
+    emit(g, "TYPE GF@$t1 %s", var);
+    emit(g, "JUMPIFNEQ %s GF@$t1 string@%s", fail, type);
+    emit(g, "PUSHS %s", var);
+    if (lit->rule == RULE_LITERAL_PATTERN_5) {
+        const tree_node_t *num = lit->children[1]->children[0];
+        emit(g, num->token.type == T_INT ? "PUSHS int@0" : "PUSHS float@0x0p+0");
+        gen_term(g, num);
+        emit(g, "SUBS");
+    } else {
+        gen_term(g, lit->children[0]);
+    }
+    emit(g, "JUMPIFNEQS %s", fail);
+}
+
+// one pattern of a case: var holds the matched value
+static void gen_pattern(gen_t *g, const tree_node_t *pat, const char *var, const char *fail) {
+    if (pat->rule == RULE_PATTERN_1) { 
+        return;
+    }
+    if (pat->rule == RULE_PATTERN_3) {
+        test_literal(g, pat->children[0], var, fail);
+        return;
+    }
+    const tree_node_t *detail = pat->children[1];
+    if (detail->rule == RULE_ID_PATTERN_1) {
+        const char *cls;
+        const char *type = pattern_type(detail->children[1], &cls);
+        if (cls) {
+            test_class(g, var, cls, fail);
+        } else {
+            emit(g, "TYPE GF@$t1 %s", var);
+            emit(g, "JUMPIFNEQ %s GF@$t1 string@%s", fail, type);
+        }
+        emit(g, "MOVE LF@%s$%zu %s", decl_name(pat), decl_id(g, pat), var);
+        return;
+    }
+    test_class(g, var, pat->children[0]->token.data, fail);
+    node_list_t order = {0};
+    for (const tree_node_t *n = detail; n;) {
+        const tree_node_t *next = NULL;
+        for (size_t i = 0; i < n->children_count; i++) {
+            const tree_node_t *c = n->children[i];
+            if (c->rule == RULE_SUBPATTERN_1 || c->rule == RULE_SUBPATTERN_2 || c->rule == RULE_SUBPATTERN_3) {
+                list_push(g, &order, c);
+            } else if (c->rule == RULE_SUBPATTERN_LIST_1 || c->rule == RULE_SUBPATTERN_REST_1) {
+                next = c;
+            }
+        }
+        n = next;
+    }
+    for (size_t i = 0; i < order.count; i++) {
+        const tree_node_t *sub = order.items[i];
+        if (sub->rule == RULE_SUBPATTERN_1) { // bind field to a vriable
+            emit(g, "ARRAYGET LF@%s$%zu %s int@%zu", decl_name(sub), decl_id(g, sub), var, i + 1);
+        } else if (sub->rule == RULE_SUBPATTERN_3) {
+            emit(g, "ARRAYGET GF@$t2 %s int@%zu", var, i + 1);
+            test_literal(g, sub->children[0], "GF@$t2", fail);
+        }
+    }
+    free(order.items);
+}
+
+static void gen_match(gen_t *g, const tree_node_t *node, bool keep) {
+    const tree_node_t *suffix = node->children[1];
+    int n = g->labels++;
+    char var[64];
+    snprintf(var, sizeof(var), "LF@$match$%zu", decl_id(g, suffix));
+
+    gen_expr(g, node->children[0]);
+    emit(g, "POPS %s", var);
+
+    int k = 0;
+    for (const tree_node_t *list = suffix->children[3]; list->rule != RULE_CASE_LIST_REST_2; list = list->children[1], k++) {
+        const tree_node_t *clause = list->children[0];
+        char fail[64];
+        snprintf(fail, sizeof(fail), "$match%d$case%d", n, k);
+
+        gen_pattern(g, clause->children[1], var, fail);
+        const tree_node_t *guard = clause->children[2];
+        if (guard->rule == RULE_CASE_GUARD_1) {
+            gen_expr(g, guard->children[1]);
+            emit(g, "PUSHS bool@true");
+            emit(g, "JUMPIFNEQS %s", fail);
+        }
+        gen_rhs(g, clause->children[4]);
+        if (!keep) {
+            emit(g, "POPS GF@$t1");
+        }
+        emit(g, "JUMP $match%d$end", n);
+        emit(g, "LABEL %s", fail);
+    }
+    emit(g, "LABEL $match%d$end", n);
+}
+
 static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
     if (node->rule == RULE_INLINE_STATEMENT_1) {
         gen_return(g, node->children[0]);
@@ -675,14 +869,20 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
         if (rest->rule == RULE_ID_STATEMENT_1) { // x = value
             gen_rhs(g, rest->children[1]);
             emit_var(g, "POPS", node->children[0]);
-        } else { // expression starting with id, result is thrown away
+        } else if (rest->children[1]->rule == RULE_MATCH_SUFFIX_1) {
+            gen_match(g, rest, keep);
+            return;
+        } else {
             gen_expr(g, rest->children[0]);
             if (!keep) {
                 emit(g, "POPS GF@$t1");
             }
             return;
         }
-    } else if (node->rule == RULE_INLINE_STATEMENT_6) { // expression as statement
+    } else if (node->rule == RULE_INLINE_STATEMENT_6 && node->children[1]->rule == RULE_MATCH_SUFFIX_1) { 
+        gen_match(g, node, keep);
+        return;
+    } else if (node->rule == RULE_INLINE_STATEMENT_6) {
         gen_expr(g, node->children[0]);
         if (!keep) {
             emit(g, "POPS GF@$t1");
@@ -787,6 +987,25 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
     }
     free(locals.items);
 
+    // hidden variable if each match and pattern variables
+    node_list_t matches = {0};
+    collect(g, def->children[5], RULE_MATCH_SUFFIX_1, &matches);
+    for (size_t i = 0; i < matches.count; i++) {
+        emit(g, "DEFVAR LF@$match$%zu", decl_id(g, matches.items[i]));
+    }
+    free(matches.items);
+    node_list_t binds = {0};
+    collect(g, def->children[5], RULE_PATTERN_2, &binds);
+    collect(g, def->children[5], RULE_SUBPATTERN_1, &binds);
+    for (size_t i = 0; i < binds.count; i++) {
+        const tree_node_t *b = binds.items[i];
+        if (b->rule == RULE_PATTERN_2 && b->children[1]->rule != RULE_ID_PATTERN_1) {
+            continue;
+        }
+        emit(g, "DEFVAR LF@%s$%zu", decl_name(b), decl_id(g, b));
+    }
+    free(binds.items);
+
     // for loop variables and their hidden end and step
     node_list_t loops = {0};
     collect(g, def->children[5], RULE_GENERATOR, &loops);
@@ -840,6 +1059,18 @@ static void gen_builtins(gen_t *g) {
     emit(g, "# --- builtin readBoolean ---");
     emit(g, "LABEL $b_readBoolean");
     emit(g, "READ GF@$t1 bool");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+
+    // readIntMaybe(), readDoubleMaybe(): nil on bad input is () (Unit)
+    emit(g, "# --- builtin readIntMaybe ---");
+    emit(g, "LABEL $b_readIntMaybe");
+    emit(g, "READ GF@$t1 int");
+    emit(g, "PUSHS GF@$t1");
+    emit(g, "RETURN");
+    emit(g, "# --- builtin readDoubleMaybe ---");
+    emit(g, "LABEL $b_readDoubleMaybe");
+    emit(g, "READ GF@$t1 float");
     emit(g, "PUSHS GF@$t1");
     emit(g, "RETURN");
 
