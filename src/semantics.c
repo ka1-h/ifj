@@ -55,13 +55,6 @@ static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree
         size_t new_capacity = 32;
 
         if(info->capacity != 0) {
-            
-            //kontrola preteceni
-            size_t max_capacity = SIZE_MAX/sizeof(*info->items);
-            if(info->capacity > max_capacity/2) {
-                return NULL;
-            }
-
             new_capacity = info->capacity * 2;
         }
 
@@ -88,6 +81,7 @@ static SemanticNodeInfo *semantic_info_get_or_add(SemanticInfo *info, const tree
     item->declaration = NULL;
     item->scope_owner = NULL;
     item->promote_to_double = false ;
+    item->ends_with_return = false;
 
     info->count++;
 
@@ -106,9 +100,6 @@ static int semantic_add_type_member(SemanticType *type, DataType member_type, co
         }
     }
 
-    if(type->count >= SIZE_MAX/sizeof(*type->members)) {
-        return 99;
-    }
 
     SemanticTypeMember *members = realloc(type->members, (type->count + 1) * sizeof(*type->members));
     if(members == NULL) {
@@ -436,12 +427,6 @@ static int semantic_collect_type_aliases(const tree_node_t *node, SemanticInfo *
             const tree_node_t *definition = info->items[idx].node;
 
 
-            if(definition->rule == RULE_CASE_CLASS_DEF) {
-                if(strcmp(definition->children[2]->token.data, name)==0) {
-                    return 4;
-                }
-            }
-
             if(definition->rule==RULE_TYPE_DEF && strcmp(definition->children[1]->token.data, name) == 0) {
                 return 4;
             }
@@ -764,6 +749,12 @@ static int semantic_resolve_variable(const tree_node_t *node, const SemanticScop
                     declared_name = declaration->children[0];
                 }
 
+                if(declaration->rule==RULE_SUBPATTERN_1 || (declaration->rule==RULE_PATTERN_2 && declaration->children[1]->rule==RULE_ID_PATTERN_1)) {
+
+                    declared_name = declaration->children[0];
+                }
+                
+                
                 if(declaration->rule == RULE_FUNCTION_DEF) {
                     
                     const tree_node_t *extension = semantic_find_extension(declaration);
@@ -899,6 +890,20 @@ static bool semantic_get_builtin(const char *name, BuiltinFunction *builtin) {
         return true;
     }
 
+
+
+    if(strcmp(name, "readIntMaybe")==0) {
+        builtin->param_count = 0;
+        builtin->return_type = TYPE_INT;
+        return true;
+    }
+
+    if(strcmp(name, "readDoubleMaybe")== 0) {
+        builtin->param_count = 0;
+        builtin->return_type = TYPE_DOUBLE;
+        return true;
+    }
+
     return false;
 }
 
@@ -1014,7 +1019,7 @@ static int semantic_check_classes(const SymTable *functions, SemanticInfo *info)
 static int semantic_type_field(const tree_node_t *node, const tree_node_t *receiver, const tree_node_t *member, SemanticInfo *info, DataType *result) {
     const SemanticType *type = semantic_find_full_type(info, receiver);
 
-    if(type == NULL || type->count != 1) {
+    if(type == NULL) {
         return 6;
     }
 
@@ -1068,11 +1073,18 @@ static int semantic_type_field(const tree_node_t *node, const tree_node_t *recei
 static int semantic_type_if_value(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result);
 
 
+static int semantic_type_match(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result);
+
 
 static const tree_node_t *semantic_value_expression(const tree_node_t *value) {
     
     if(value->rule == RULE_VALUE_1) {
         return value->children[0];
+    }
+
+    if(value->rule==RULE_VALUE_2 && value->children[1]->rule==RULE_MATCH_SUFFIX_1) {
+
+        return value;
     }
 
     if(value->rule==RULE_VALUE_2 && value->children[1]->rule==RULE_MATCH_SUFFIX_2) {
@@ -1094,6 +1106,12 @@ static int semantic_type_expression(const tree_node_t *node, const SemanticScope
         return 0;
     }
 
+
+    if(node->rule==RULE_VALUE_2 && node->children[1]->rule==RULE_MATCH_SUFFIX_1) {
+
+        return semantic_type_match(node, scope, info, result);
+
+    }
 
     if(node->rule == RULE_VALUE_1) {
         node = node->children[0];
@@ -1381,6 +1399,12 @@ static int semantic_type_constructor(const tree_node_t *node, const tree_node_t 
         return 5;
     }
 
+    SemanticNodeInfo *call_info = semantic_info_get_or_add(info, node);
+    if(call_info == NULL) {
+        return 99;
+    }
+    call_info->declaration = definition;
+
 
     size_t count = semantic_count_params(definition);
     size_t position = 0;
@@ -1390,6 +1414,7 @@ static int semantic_type_constructor(const tree_node_t *node, const tree_node_t 
     for(size_t idx = 0; idx < args->children_count; idx++) {
         const tree_node_t *value = args->children[idx];
 
+        if(value->type == NODE_TERMINAL) {
             continue;
         }
 
@@ -1568,7 +1593,13 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
         }
     }
 
+    SemanticNodeInfo *call_info = semantic_info_get_or_add(info, node);
+    if(call_info == NULL) {
+        return 99;
+    }
 
+
+    call_info->declaration = definition;
 
     size_t arg_index = 0;
     
@@ -1699,6 +1730,18 @@ static int semantic_type_call(const tree_node_t *node, const SemanticScope *scop
         return 99;
     }
 
+    if(definition==NULL && (strcmp(name, "readIntMaybe")==0 || strcmp(name, "readDoubleMaybe")==0)) {
+
+        error =  semantic_add_type_member(&item->full_type, TYPE_UNIT, NULL);
+        if(error != 0) {
+            return error;
+        }
+
+
+        item->type = TYPE_UNDEF;
+    }
+    
+    
     *result = item->type;
     item->declaration = definition;
 
@@ -1908,7 +1951,7 @@ static int semantic_collect_functions(const tree_node_t *node, SymTable *functio
 
 //kontroluje typ hodnoty vracene return
 static int semantic_check_return(const tree_node_t *node,const tree_node_t *return_type) {
-    //return vyzaduje uvedeny navratovy typ
+    
     if(return_type->rule == RULE_OPTIONAL_TYPE_2) {
         return 6;
     }
@@ -1916,7 +1959,6 @@ static int semantic_check_return(const tree_node_t *node,const tree_node_t *retu
     const tree_node_t *value = node->children[1];
 
 
-    //typ vracene hodnoty se kontroluje pozdeji v semantic_check_return_value
     if(value->rule == RULE_RETURN_VALUE_1) {
         return 0;
     }
@@ -2263,8 +2305,11 @@ static int semantic_check_condition(const tree_node_t *node, const SemanticScope
 //kontroluje vyraz pouzity jako prikaz
 static int semantic_check_expression_statement(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info) {
     
-    if(node->children[1]->rule != RULE_MATCH_SUFFIX_2) {
-        return 0;
+    if(node->children[1]->rule == RULE_MATCH_SUFFIX_1){
+        DataType type;
+
+
+        return semantic_type_match(node, scope, info, &type);
     }
 
     const tree_node_t *expression = node->children[0];
@@ -2463,12 +2508,18 @@ static int semantic_get_body_result(const tree_node_t *node, SemanticInfo *info,
         
         *expression = node->children[0];
 
+        if(node->children_count>1 && node->children[1]->rule==RULE_MATCH_SUFFIX_1) {
+
+            *expression = node;
+        }
+
         const SemanticNodeInfo *item = semantic_info_find(info, *expression);
         if(item==NULL || (item->type==TYPE_UNDEF && item->full_type.count==0)) {
             return 6;
         }
 
         *type = item->type;
+        *ends_with_return = item->ends_with_return;
     }
 
     return 0;
@@ -2607,7 +2658,21 @@ static int semantic_merge_if_types(const tree_node_t *node, SemanticInfo *info,
     }
 
 
-    return semantic_save_type(info, node, *result);
+    error = semantic_save_type(info, node, *result);
+    if(error != 0) {
+        return error;
+    }
+
+
+    SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+    if(item == NULL) {
+        return 99;
+    }
+
+    item->ends_with_return = *ends_with_return;
+
+
+    return 0;
 }
 
 
@@ -2628,6 +2693,583 @@ static int semantic_type_if_value(const tree_node_t *node,
 
 
     return semantic_merge_if_types(node, info, result, &ends_with_return);
+}
+
+
+//promena vzoru plati jen v jedne vetvi,nejde menit
+static int semantic_bind_pattern(const tree_node_t *node, const SemanticType *type,
+    SemanticScope *scope, SemanticInfo *info) {
+
+    const char *name = node->children[0]->token.data;
+
+
+    int inserted = symtable_insert(&scope->variables, name);
+    if(inserted == RET_DUPLICATE) {
+        return 4;
+    }
+
+    if(inserted != RET_OK) {
+        return 99;
+    }
+
+
+    int error = semantic_store_full_type(info, node, type);
+    if(error != 0) {
+        return error;
+    }
+
+    SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+    if(item == NULL) {
+        return 99;
+    }
+
+    item->scope_owner = scope->owner;
+
+    Symbol *symbol = symtable_lookup(&scope->variables, name);
+    if(symbol == NULL) {
+        return 99;
+    }
+
+
+
+    symbol->type = SYM_VAR;
+    symbol->var.type = item->type;
+    symbol->var.is_mutable = false;
+
+    return 0;
+}
+
+
+static DataType semantic_pattern_literal_type(const tree_node_t *node) {
+    
+    DataType type = semantic_literal_type(node);
+
+    for(size_t idx = 0; type == TYPE_UNDEF && idx < node->children_count; idx++) {
+        type = semantic_pattern_literal_type(node->children[idx]);
+
+    }
+
+    return type;
+}
+
+
+static const tree_node_t *semantic_subpattern_at(const tree_node_t *node,
+    size_t *position) {
+
+    if(node->rule==RULE_SUBPATTERN_1 || node->rule==RULE_SUBPATTERN_2 || node->rule==RULE_SUBPATTERN_3) {
+
+        if(*position == 0) {
+            return node;
+        }
+
+        (*position)--;
+        return NULL;
+    }
+
+    for(size_t idx = 0; idx < node->children_count; idx++) {
+        const tree_node_t *pattern = semantic_subpattern_at(node->children[idx], position);
+
+
+        if(pattern != NULL) {
+            return pattern;
+        }
+    }
+
+    return NULL;
+}
+
+
+
+static int semantic_check_pattern(const tree_node_t *node, const SemanticType *input,
+    SemanticScope *scope, SemanticInfo *info) {
+
+    if(node->rule == RULE_PATTERN_1 || node->rule == RULE_SUBPATTERN_2) {
+        return 0;
+    }
+
+    if(node->rule == RULE_SUBPATTERN_1) {
+        return semantic_bind_pattern(node, input, scope, info);
+    }
+
+    if(node->rule == RULE_PATTERN_3 || node->rule == RULE_SUBPATTERN_3) {
+        DataType type = semantic_pattern_literal_type(node);
+        if(type == TYPE_UNDEF) {
+            return 6;
+        }
+
+        int error = semantic_check_full_value(input, node, type, info, 6);
+        if(error != 0) {
+            return error;
+        }
+
+        return semantic_save_type(info, node, type);
+    }
+
+    const tree_node_t *detail = node->children[1];
+    SemanticType wanted = {0};
+    int error;
+
+    if(detail->rule == RULE_ID_PATTERN_1) {
+        
+        error = semantic_read_full_type(detail->children[1], info, &wanted);
+    }else {
+        const tree_node_t *definition = semantic_find_class(info, node->children[0]->token.data);
+
+    
+
+        error = semantic_add_type_member(&wanted, TYPE_UNDEF, definition);
+    }
+
+
+
+    SemanticType narrowed = {0};
+
+    for(size_t idx = 0; error == 0 && idx < wanted.count; idx++){
+        for(size_t position = 0; position < input->count; position++) {
+
+            if(wanted.members[idx].type==input->members[position].type && wanted.members[idx].declaration==input->members[position].declaration) {
+
+                error = semantic_add_type_member(&narrowed, wanted.members[idx].type,
+                    wanted.members[idx].declaration);
+
+                break;
+            }
+        }
+    }
+
+    free(wanted.members);
+
+    if(error == 0 && narrowed.count == 0) {
+        error = 6;
+    }
+
+
+    if(error == 0 && detail->rule == RULE_ID_PATTERN_1) {
+        error = semantic_bind_pattern(node, &narrowed, scope, info);
+
+    }else if(error == 0) {
+        const tree_node_t *definition = narrowed.members[0].declaration;
+
+        error = semantic_store_full_type(info, node, &narrowed);
+        if(error == 0) {
+            SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+
+            if(item == NULL) {
+                error = 99;
+            }else {
+                item->declaration = definition;
+            }
+        }
+
+
+        size_t count = semantic_count_params(definition);
+
+        for(size_t position = 0; error==0 && position<count; position++) {
+            
+            size_t index = position;
+            const tree_node_t *field = semantic_param_at(definition, &index);
+
+            index = position;
+            const tree_node_t *pattern = semantic_subpattern_at(detail, &index);
+
+            if(field==NULL || pattern==NULL) {
+                error = 6;
+                break;
+            }
+
+
+            const SemanticType *field_type = semantic_find_full_type(info, field);
+            if(field_type == NULL) {
+                error = 99;
+                break;
+            }
+
+            error = semantic_check_pattern(pattern, field_type, scope, info);
+        }
+
+    }
+
+
+    free(narrowed.members);
+
+    return error;
+}
+
+
+//najde cilovy typ vysledku match
+static const tree_node_t *semantic_match_annotation(const tree_node_t *node, const SemanticScope *scope, const SemanticInfo *info) {
+
+    const tree_node_t *current = node;
+
+    while(current->parent != NULL) {
+       
+        const tree_node_t *parent = current->parent;
+
+        if(parent->rule == RULE_VAR_DEFINITION) {
+            const tree_node_t *annotation = parent->children[2];
+
+
+            if(annotation->rule == RULE_OPTIONAL_TYPE_1) {
+                return annotation->children[1];
+            }
+
+            return NULL;
+        }
+
+
+        if(parent->rule == RULE_FUNCTION_DEF) {
+            const tree_node_t *annotation = parent->children[3];
+
+            if(annotation->rule == RULE_OPTIONAL_TYPE_1) {
+                return annotation->children[1];
+            }
+
+            return NULL;
+        }
+
+
+        if(parent->rule == RULE_RETURN_STATEMENT) {
+            
+            while(scope!=NULL && scope->owner->rule!=RULE_FUNCTION_DEF) {
+                scope = scope->parent;
+            }
+
+            if(scope!=NULL && scope->owner->children[3]->rule==RULE_OPTIONAL_TYPE_1) {
+
+                return scope->owner->children[3]->children[1];
+            }
+
+            return NULL;
+        }
+
+        if(parent->rule == RULE_BLOCK) {
+            const tree_node_t *last = semantic_last_statement(parent);
+            const tree_node_t *inside = node;
+
+            while(inside!=parent && inside!=last) {
+                inside = inside->parent;
+            }
+
+            if(inside != last) {
+                return NULL;
+            }
+        }
+
+        if(parent->rule == RULE_CALL_ARGS) {
+            const tree_node_t *call = parent->parent;
+            const SemanticNodeInfo *item = semantic_info_find(info, call);
+
+            if(item==NULL || item->declaration==NULL) {
+                return NULL;
+            }
+
+            const tree_node_t *definition = item->declaration;
+            size_t position = 0;
+
+            for(size_t list = 1; list < call->children_count; list++) {
+                const tree_node_t *args = call->children[list];
+
+                for(size_t idx = 0; idx < args->children_count; idx++){
+                    
+                    if(args->children[idx]->type == NODE_TERMINAL) {
+                        continue;
+                    }
+
+                    if(args->children[idx] == current) {
+                    
+                        const tree_node_t *params = definition;
+
+                        if(definition->rule == RULE_FUNCTION_DEF) {
+                            params = definition->children[2];
+                        }
+
+                        const tree_node_t *param = semantic_param_at(params, &position);
+
+                        if(param != NULL) {
+                            return param->children[2];
+                        }
+
+
+                        return NULL;
+                    }
+
+
+                    position++;
+                }
+            }
+
+            return NULL;
+        }
+
+        current = parent;
+    }
+
+
+
+    return NULL;
+}
+
+
+static int semantic_case_result(const tree_node_t *clause, SemanticInfo *info,
+    const tree_node_t **expression, DataType *type, bool *returns) {
+
+    const tree_node_t *rhs = clause->children[4];
+
+    if(rhs->rule == RULE_RHS_1) {
+        return semantic_get_body_result(rhs->children[0], info, TYPE_UNDEF, expression, type, returns);
+    }
+
+    *expression = semantic_value_expression(rhs->children[0]);
+
+
+    const SemanticNodeInfo *item = semantic_info_find(info, *expression);
+    if(item==NULL || item->full_type.count==0) {
+        return 6;
+    }
+
+    *type = item->type;
+    *returns = item->ends_with_return;
+
+    return 0;
+}
+
+
+//vysledky vetvi musi mit stejny typ(nebo int, double)
+static int semantic_merge_match_result(const tree_node_t *node,
+    const tree_node_t *expression, DataType type, SemanticInfo *info) {
+
+    const SemanticType *left = semantic_find_full_type(info, node);
+    const SemanticType *right = semantic_find_full_type(info, expression);
+
+    SemanticTypeMember member = {type, NULL};
+    SemanticType simple = {&member, 1};
+
+    if(right == NULL) {
+        right = &simple;
+    }
+
+    if(left == NULL) {
+        return semantic_store_full_type(info, node, right);
+    }
+
+    DataType previous = semantic_info_find(info, node)->type;
+
+    if((previous==TYPE_INT && type==TYPE_DOUBLE) || (previous==TYPE_DOUBLE && type==TYPE_INT)) {
+
+        return semantic_save_type(info, node, TYPE_DOUBLE);
+    }
+
+    if(left->count != right->count) {
+        return 6;
+    }
+
+    for(size_t idx = 0; idx < left->count; idx++) {
+        bool found = false;
+
+        for(size_t position = 0; position < right->count; position++) {
+            if(left->members[idx].type==right->members[position].type && left->members[idx].declaration==right->members[position].declaration) {
+
+                found = true;
+                break;
+            }
+        }
+
+        if(!found) {
+            return 6;
+        }
+    }
+
+    return 0;
+}
+
+
+static int semantic_type_match(const tree_node_t *node, const SemanticScope *scope, SemanticInfo *info, DataType *result) {
+
+    if(scope == NULL) {
+        return 99;
+    }
+
+    const tree_node_t *subject = node->children[0];
+
+
+    int error =semantic_type_expression(subject, scope, info, result);
+    if(error != 0) {
+        return error;
+    }
+
+    const SemanticType *type = semantic_find_full_type(info, subject);
+    if(type == NULL) {
+        return 6;
+    }
+
+    SemanticType input = {0};
+
+    for(size_t idx = 0; error == 0 && idx < type->count; idx++) {
+        error = semantic_add_type_member(&input, type->members[idx].type,type->members[idx].declaration);
+
+    }
+
+
+    SemanticType expected = {0};
+    const tree_node_t *annotation = semantic_match_annotation(node, scope, info);
+
+
+    if(error == 0 && annotation != NULL) {
+        error = semantic_read_full_type(annotation, info, &expected);
+    }
+
+
+
+    bool has_default = false;
+    bool all_return = true;
+    bool has_result = false;
+    const tree_node_t *first = node->children[1]->children[3];
+    const tree_node_t *list = first;
+
+
+    while(error==0 && list->rule!=RULE_CASE_LIST_REST_2) {
+        
+        const tree_node_t *clause= list->children[0];
+        const tree_node_t *pattern = clause->children[1];
+        const tree_node_t *guard = clause->children[2];
+
+        if(pattern->rule == RULE_PATTERN_1 &&
+           guard->rule == RULE_CASE_GUARD_2) {
+
+            has_default = true;
+        }
+
+        SemanticScope local;
+
+
+        if(!symtable_init(&local.variables)) {
+            error = 99;
+            break;
+        }
+
+        local.functions = scope->functions;
+        local.parent = (SemanticScope *)scope;
+        local.caller = NULL;
+        local.owner = clause;
+
+        error = semantic_check_pattern(pattern, &input, &local, info);
+        if(error == 0 && guard->rule == RULE_CASE_GUARD_1) {
+            error = semantic_check_condition(guard, &local, info);
+        }
+
+
+        if(error == 0) {
+            const tree_node_t *rhs = clause->children[4];
+
+            if(rhs->rule == RULE_RHS_2) {
+                const tree_node_t *value = semantic_value_expression(rhs->children[0]);
+                DataType value_type;
+
+                if(value == NULL) {
+                    error = 6;
+
+                }else {
+                    error = semantic_type_expression(value, &local, info, &value_type);
+                }
+
+            }else {
+                error = semantic_check_variables(rhs, &local, scope->functions, info);
+            }
+        }
+
+        const tree_node_t *expression = NULL;
+        DataType branch_type = TYPE_UNIT;
+        bool returns = false;
+
+        if(error == 0) {
+            error = semantic_case_result(clause, info, &expression, &branch_type, &returns);
+        }
+
+        if(error == 0 && !returns) {
+            all_return = false;
+
+            if(expected.count > 1) {
+                error = semantic_check_full_value(&expected, expression, branch_type, info, 6);
+
+                if(error == 0 && !has_result) {
+                    error = semantic_store_full_type(info, node, &expected);
+                }
+
+            }else if(!has_result) {
+                error = semantic_copy_value_type(info, node, expression, branch_type);
+
+            }else {
+                error = semantic_merge_match_result(node, expression, branch_type, info);
+            }
+
+            has_result = true;
+        }
+
+        symtable_free(&local.variables);
+        list = list->children[1];
+    }
+
+
+
+    free(input.members);
+    free(expected.members);
+
+    if(error != 0) {
+        return error;
+    }
+
+    if(!has_default) {
+        return 10;
+    }
+
+    if(!has_result) {
+        
+        error = semantic_save_type(info, node, TYPE_UNIT);
+        if(error != 0) {
+            return error;
+        }
+    }
+
+    *result = semantic_info_find(info, node)->type;
+
+    //kdyz je vysledek double oznaci int vetve pro prevod
+    if(*result == TYPE_DOUBLE) {
+        list = first;
+
+        while(list->rule != RULE_CASE_LIST_REST_2) {
+            const tree_node_t *expression;
+            DataType branch_type;
+            bool returns;
+
+            error = semantic_case_result(list->children[0], info, &expression,
+                &branch_type, &returns);
+
+            if(error != 0) {
+                return error;
+            }
+
+            if(!returns && branch_type == TYPE_INT && expression != NULL) {
+                SemanticNodeInfo *item = semantic_info_get_or_add(info, expression);
+
+                if(item == NULL) {
+                    return 99;
+                }
+
+                item->promote_to_double = true;
+            }
+
+            list = list->children[1];
+        }
+    }
+
+    SemanticNodeInfo *item = semantic_info_get_or_add(info, node);
+    if(item == NULL) {
+        return 99;
+    }
+
+    item->ends_with_return = all_return;
+
+    return 0;
 }
 
 
@@ -2821,6 +3463,11 @@ static int semantic_check_variables(const tree_node_t *node, SemanticScope *scop
         return 0;
     }
     if(node->type != NODE_NONTERMINAL) {
+        return 0;
+    }
+
+
+    if(node->rule == RULE_CASE_CLAUSE) {
         return 0;
     }
 

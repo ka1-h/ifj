@@ -21,6 +21,7 @@ typedef struct {
     SemanticType full_type;
     const tree_node_t *declaration;
     bool promote_to_double;
+    bool ends_with_return;
     const tree_node_t *scope_owner;
 } SemanticNodeInfo;
 
