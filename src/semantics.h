@@ -5,39 +5,36 @@
 
 typedef struct {
     DataType type;
-    const tree_node_t *declaration;
+    const tree_node_t* declaration;
 } SemanticTypeMember;
 
-
 typedef struct {
-    SemanticTypeMember *members;
+    SemanticTypeMember* members;
     size_t count;
-}SemanticType;
-
+} SemanticType;
 
 typedef struct {
-    const tree_node_t *node;
+    const tree_node_t* node;
     DataType type;
     SemanticType full_type;
-    const tree_node_t *declaration;
+    const tree_node_t* declaration;
     bool promote_to_double;
     bool ends_with_return;
-    const tree_node_t *scope_owner;
+    const tree_node_t* scope_owner;
 } SemanticNodeInfo;
 
 typedef struct {
-    SemanticNodeInfo *items;
+    SemanticNodeInfo* items;
     size_t count;
     size_t capacity;
 } SemanticInfo;
 
-const SemanticNodeInfo *semantic_info_find(const SemanticInfo *info, const tree_node_t *node);
+const SemanticNodeInfo* semantic_info_find(const SemanticInfo* info, const tree_node_t* node);
 
+void semantic_info_free(SemanticInfo* info);
 
-void semantic_info_free(SemanticInfo *info);
+int semantic_check(const tree_node_t* root);
 
-int semantic_check(const tree_node_t *root);
-
-int semantic_check_with_info(const tree_node_t *root, SemanticInfo *info);
+int semantic_check_with_info(const tree_node_t* root, SemanticInfo* info);
 
 #endif

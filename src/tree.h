@@ -143,7 +143,7 @@ typedef enum {
     RULE_INTERP_PARTS_2,
     RULE_INTERP_PARTS_3,
     RULE_INTERP_PARTS_4,
-    // nonterminals expanded by the precedence parser 
+    // nonterminals expanded by the precedence parser
     RULE_EXPRESSION,
     RULE_VALUE_EXPRESSION,
     RULE_EXPRESSION_AFTER_ID,
@@ -155,39 +155,38 @@ typedef enum {
     RULE_COUNT
 } tree_rule_t;
 
-const char *tree_rule_name(tree_rule_t rule);
+const char* tree_rule_name(tree_rule_t rule);
 
 typedef enum {
     NODE_TERMINAL,
     NODE_NONTERMINAL
 } tree_node_type_t;
 
-
 typedef struct {
     t_type type;
-    char *data;    
+    char* data;
     int line;
 } tree_token_t;
 
 typedef struct tree_node {
     tree_node_type_t type;
-    struct tree_node *parent;       
-    struct tree_node **children;    
+    struct tree_node* parent;
+    struct tree_node** children;
     size_t children_count;
     size_t children_capacity;
 
-    tree_rule_t rule;              
-    tree_token_t token;           
-    void *symbol;                  
+    tree_rule_t rule;
+    tree_token_t token;
+    void* symbol;
 } tree_node_t;
 
-tree_node_t *tree_create_terminal(const Token *token);
-tree_node_t *tree_create_nonterminal(tree_rule_t rule);
-bool tree_add_child(tree_node_t *parent, tree_node_t *child);
-bool tree_detach(tree_node_t *node);
-void tree_remove(tree_node_t *node);
-void tree_dispose(tree_node_t **root);
-tree_node_t *tree_get_child(const tree_node_t *node, size_t index);
-void tree_print(const tree_node_t *root, FILE *out);
+tree_node_t* tree_create_terminal(const Token* token);
+tree_node_t* tree_create_nonterminal(tree_rule_t rule);
+bool tree_add_child(tree_node_t* parent, tree_node_t* child);
+bool tree_detach(tree_node_t* node);
+void tree_remove(tree_node_t* node);
+void tree_dispose(tree_node_t** root);
+tree_node_t* tree_get_child(const tree_node_t* node, size_t index);
+void tree_print(const tree_node_t* root, FILE* out);
 
 #endif

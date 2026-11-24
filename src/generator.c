@@ -1,4 +1,4 @@
-# include "generator.h"
+#include "generator.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -7,21 +7,22 @@
 
 // array of tree nodes
 typedef struct {
-    const tree_node_t **items;
+    const tree_node_t** items;
     size_t count;
     size_t capacity;
 } node_list_t;
 
 typedef struct {
-    FILE *out;
-    const SemanticInfo *info;
+    FILE* out;
+    const SemanticInfo* info;
     node_list_t decls;
     int error;
     int labels; // counter for unique label numbers
 } gen_t;
 
 // writes one line of code
-static void emit(gen_t *g, const char *fmt, ...) {
+static void emit(gen_t* g, const char* fmt, ...)
+{
     va_list args;
     va_start(args, fmt);
     vfprintf(g->out, fmt, args);
@@ -30,10 +31,11 @@ static void emit(gen_t *g, const char *fmt, ...) {
 }
 
 // appends a node to the list (sets error 99 on failure)
-static void list_push(gen_t *g, node_list_t *l, const tree_node_t *node) {
+static void list_push(gen_t* g, node_list_t* l, const tree_node_t* node)
+{
     if (l->count == l->capacity) {
         size_t cap = l->capacity ? l->capacity * 2 : 16;
-        const tree_node_t **tmp = realloc(l->items, cap * sizeof(*tmp));
+        const tree_node_t** tmp = realloc(l->items, cap * sizeof(*tmp));
         if (!tmp) {
             g->error = 99;
             return;
@@ -45,7 +47,8 @@ static void list_push(gen_t *g, node_list_t *l, const tree_node_t *node) {
 }
 
 // unique number of a declaration
-static size_t decl_id(gen_t *g, const tree_node_t *decl) {
+static size_t decl_id(gen_t* g, const tree_node_t* decl)
+{
     for (size_t i = 0; i < g->decls.count; i++) {
         if (g->decls.items[i] == decl) {
             return i;
@@ -56,19 +59,22 @@ static size_t decl_id(gen_t *g, const tree_node_t *decl) {
 }
 
 // name in the source: VAR_DEFINITION has it as child 1, PARAM as child 0
-static const char *decl_name(const tree_node_t *decl) {
+static const char* decl_name(const tree_node_t* decl)
+{
     int idx = (decl->rule == RULE_VAR_DEFINITION) ? 1 : 0;
     return decl->children[idx]->token.data;
 }
 
 // FUNCTION_DEF children
-static const char *function_name(const tree_node_t *def) {
+static const char* function_name(const tree_node_t* def)
+{
     return def->children[1]->token.data;
 }
 
 // EXTENSION_DEF that contains a method, or NULL for a normal function
-static const tree_node_t *method_extension(const tree_node_t *def) {
-    for (const tree_node_t *n = def->parent; n; n = n->parent) {
+static const tree_node_t* method_extension(const tree_node_t* def)
+{
+    for (const tree_node_t* n = def->parent; n; n = n->parent) {
         if (n->rule == RULE_EXTENSION_DEF) {
             return n;
         }
@@ -77,7 +83,8 @@ static const tree_node_t *method_extension(const tree_node_t *def) {
 }
 
 // finds all nodes with the given rule in the subtree
-static void collect(gen_t *g, const tree_node_t *node, tree_rule_t rule, node_list_t *out) {
+static void collect(gen_t* g, const tree_node_t* node, tree_rule_t rule, node_list_t* out)
+{
     if (!node || node->type != NODE_NONTERMINAL || node->rule == RULE_VALUE_EXPRESSION) {
         return;
     }
@@ -90,8 +97,9 @@ static void collect(gen_t *g, const tree_node_t *node, tree_rule_t rule, node_li
 }
 
 // type of an expression node, Double if semantics marked it for conversion
-static DataType expr_type(gen_t *g, const tree_node_t *node) {
-    const SemanticNodeInfo *i = semantic_info_find(g->info, node);
+static DataType expr_type(gen_t* g, const tree_node_t* node)
+{
+    const SemanticNodeInfo* i = semantic_info_find(g->info, node);
     if (!i) {
         return TYPE_UNDEF;
     }
@@ -99,8 +107,9 @@ static DataType expr_type(gen_t *g, const tree_node_t *node) {
 }
 
 // writes "<instr> LF@name$id" for the variable an identifier leaf refers to
-static void emit_var(gen_t *g, const char *instr, const tree_node_t *id_leaf) {
-    const SemanticNodeInfo *i = semantic_info_find(g->info, id_leaf);
+static void emit_var(gen_t* g, const char* instr, const tree_node_t* id_leaf)
+{
+    const SemanticNodeInfo* i = semantic_info_find(g->info, id_leaf);
     if (!i || !i->declaration) {
         g->error = 99;
         return;
@@ -110,9 +119,10 @@ static void emit_var(gen_t *g, const char *instr, const tree_node_t *id_leaf) {
 
 // LITERALS
 // writes an Int literal without underscores
-static void emit_int(gen_t *g, const char *text) {
+static void emit_int(gen_t* g, const char* text)
+{
     fputs("PUSHS int@", g->out);
-    for (const char *c = text; *c; c++) {
+    for (const char* c = text; *c; c++) {
         if (*c != '_') {
             fputc(*c, g->out);
         }
@@ -121,10 +131,11 @@ static void emit_int(gen_t *g, const char *text) {
 }
 
 // writes a double literal
-static void emit_double(gen_t *g, const char *text) {
+static void emit_double(gen_t* g, const char* text)
+{
     char buf[256];
     size_t n = 0;
-    for (const char *c = text; *c && n < sizeof(buf) - 1; c++) {
+    for (const char* c = text; *c && n < sizeof(buf) - 1; c++) {
         if (*c != '_' && *c != 'd' && *c != 'D') {
             buf[n++] = *c;
         }
@@ -134,7 +145,8 @@ static void emit_double(gen_t *g, const char *text) {
 }
 
 // one character of a string constant
-static void put_char(gen_t *g, unsigned char c) {
+static void put_char(gen_t* g, unsigned char c)
+{
     if (c <= 32 || c == '#' || c == '\\') {
         fprintf(g->out, "\\%03d", c);
     } else {
@@ -143,7 +155,8 @@ static void put_char(gen_t *g, unsigned char c) {
 }
 
 // writes a string literal
-static void emit_string(gen_t *g, const char *text) {
+static void emit_string(gen_t* g, const char* text)
+{
     size_t len = strlen(text);
     fputs("PUSHS string@", g->out);
     if (len >= 6 && strncmp(text, "\"\"\"", 3) == 0) {
@@ -155,12 +168,19 @@ static void emit_string(gen_t *g, const char *text) {
             char c = text[i];
             if (c == '\\' && i + 2 < len) {
                 i++;
-                switch (text[i])
-                {
-                case 'n': c = '\n'; break;
-                case 't': c = '\t'; break;
-                case 'r': c = '\r'; break;
-                default: c = text[i]; break;
+                switch (text[i]) {
+                case 'n':
+                    c = '\n';
+                    break;
+                case 't':
+                    c = '\t';
+                    break;
+                case 'r':
+                    c = '\r';
+                    break;
+                default:
+                    c = text[i];
+                    break;
                 }
             }
             put_char(g, (unsigned char)c);
@@ -170,11 +190,12 @@ static void emit_string(gen_t *g, const char *text) {
 }
 
 // EXRESSIONS
-static void gen_expr(gen_t *g, const tree_node_t *node);
-static void gen_if(gen_t *g, const tree_node_t *node, bool keep);
-static void gen_match(gen_t *g, const tree_node_t *node, bool keep);
+static void gen_expr(gen_t* g, const tree_node_t* node);
+static void gen_if(gen_t* g, const tree_node_t* node, bool keep);
+static void gen_match(gen_t* g, const tree_node_t* node, bool keep);
 
-static void gen_value(gen_t *g, const tree_node_t *value) {
+static void gen_value(gen_t* g, const tree_node_t* value)
+{
     if (value->rule == RULE_VALUE_1) { // if as a value
         gen_if(g, value->children[0], true);
         return;
@@ -192,8 +213,9 @@ static void gen_value(gen_t *g, const tree_node_t *value) {
 }
 
 // identifier: variable, or a function without parameters called without parentheses (PARAMLISTS)
-static void gen_id(gen_t *g, const tree_node_t *leaf) {
-    const SemanticNodeInfo *i = semantic_info_find(g->info, leaf);
+static void gen_id(gen_t* g, const tree_node_t* leaf)
+{
+    const SemanticNodeInfo* i = semantic_info_find(g->info, leaf);
     if (i && i->declaration && i->declaration->rule == RULE_FUNCTION_DEF) {
         emit(g, "CREATEFRAME");
         emit(g, "CALL $f_%s", leaf->token.data);
@@ -203,37 +225,39 @@ static void gen_id(gen_t *g, const tree_node_t *leaf) {
 }
 
 // leaf: variable or literal
-static void gen_term(gen_t *g, const tree_node_t *leaf) {
+static void gen_term(gen_t* g, const tree_node_t* leaf)
+{
     switch (leaf->token.type) {
-        case T_ID:
-            gen_id(g, leaf);
-            break;
-        case T_INT:
-            emit_int(g, leaf->token.data);
-            break;
-        case T_DOUBLE:
-            emit_double(g, leaf->token.data);
-            break;
-        case T_STRING:
-            emit_string(g, leaf->token.data);
-            break;
-        case T_UNIT_BRACKETS:
-            emit(g, "PUSHS nil@nil");
-            break;
-        case KW_TRUE:
-            emit(g, "PUSHS bool@true");
-            break;
-        case KW_FALSE:
-            emit(g, "PUSHS bool@false");
-            break;
-        default:
-            g->error = 99;
-            break;
+    case T_ID:
+        gen_id(g, leaf);
+        break;
+    case T_INT:
+        emit_int(g, leaf->token.data);
+        break;
+    case T_DOUBLE:
+        emit_double(g, leaf->token.data);
+        break;
+    case T_STRING:
+        emit_string(g, leaf->token.data);
+        break;
+    case T_UNIT_BRACKETS:
+        emit(g, "PUSHS nil@nil");
+        break;
+    case KW_TRUE:
+        emit(g, "PUSHS bool@true");
+        break;
+    case KW_FALSE:
+        emit(g, "PUSHS bool@false");
+        break;
+    default:
+        g->error = 99;
+        break;
     }
 }
 
 // n-th argument (VALUE node) of a CALL_ARGS node, or NULL
-static const tree_node_t *call_arg(const tree_node_t *args, size_t n) {
+static const tree_node_t* call_arg(const tree_node_t* args, size_t n)
+{
     for (size_t i = 0; i < args->children_count; i++) {
         if (args->children[i]->type == NODE_NONTERMINAL && n-- == 0) {
             return args->children[i];
@@ -243,9 +267,10 @@ static const tree_node_t *call_arg(const tree_node_t *args, size_t n) {
 }
 
 // pushes all arguments of all argument lists, left to right
-static void push_args(gen_t *g, const tree_node_t *call) {
+static void push_args(gen_t* g, const tree_node_t* call)
+{
     for (size_t l = 1; l < call->children_count; l++) {
-        const tree_node_t *args = call->children[l];
+        const tree_node_t* args = call->children[l];
         for (size_t i = 0; i < args->children_count; i++) {
             if (args->children[i]->type == NODE_NONTERMINAL) {
                 gen_value(g, args->children[i]);
@@ -255,45 +280,48 @@ static void push_args(gen_t *g, const tree_node_t *call) {
 }
 
 // type of the first argument of a call
-static DataType first_arg_type(gen_t *g, const tree_node_t *call) {
-    const tree_node_t *arg = call_arg(call->children[1], 0);
+static DataType first_arg_type(gen_t* g, const tree_node_t* call)
+{
+    const tree_node_t* arg = call_arg(call->children[1], 0);
     return arg ? expr_type(g, arg->children[0]) : TYPE_UNDEF;
 }
 
 // moved from toStr: converts the value on the stack to a string
-static void emit_to_string(gen_t *g, DataType type) {
+static void emit_to_string(gen_t* g, DataType type)
+{
     switch (type) {
-        case TYPE_INT:
-            emit(g, "INT2STRS");
-            break;
-        case TYPE_DOUBLE:
-            emit(g, "FLOAT2STRS");
-            break;
-        case TYPE_STRING:
-            break;
-        case TYPE_UNIT:
-            emit(g, "POPS GF@$t1");
-            emit(g, "PUSHS string@()");
-            break;
-        case TYPE_BOOL: {
-            int n = g->labels++;
-            emit(g, "PUSHS bool@true");
-            emit(g, "JUMPIFEQS $str%d$true", n);
-            emit(g, "PUSHS string@false");
-            emit(g, "JUMP $str%d$end", n);
-            emit(g, "LABEL $str%d$true", n);
-            emit(g, "PUSHS string@true");
-            emit(g, "LABEL $str%d$end", n);
-            break;
-        }
-        default:
-            emit(g, "# TODO toString of this type"); 
-            break;
+    case TYPE_INT:
+        emit(g, "INT2STRS");
+        break;
+    case TYPE_DOUBLE:
+        emit(g, "FLOAT2STRS");
+        break;
+    case TYPE_STRING:
+        break;
+    case TYPE_UNIT:
+        emit(g, "POPS GF@$t1");
+        emit(g, "PUSHS string@()");
+        break;
+    case TYPE_BOOL: {
+        int n = g->labels++;
+        emit(g, "PUSHS bool@true");
+        emit(g, "JUMPIFEQS $str%d$true", n);
+        emit(g, "PUSHS string@false");
+        emit(g, "JUMP $str%d$end", n);
+        emit(g, "LABEL $str%d$true", n);
+        emit(g, "PUSHS string@true");
+        emit(g, "LABEL $str%d$end", n);
+        break;
+    }
+    default:
+        emit(g, "# TODO toString of this type");
+        break;
     }
 }
 
 // built-in functions that need only a few stack instructions. returns false if name is not one of them.
-static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *call) {
+static bool gen_simple_builtin(gen_t* g, const char* name, const tree_node_t* call)
+{
     if (strcmp(name, "print") == 0) {
         push_args(g, call);
         emit(g, "POPS GF@$t1");
@@ -323,20 +351,22 @@ static bool gen_simple_builtin(gen_t *g, const char *name, const tree_node_t *ca
     return true;
 }
 
-// built-in functions written as helper functions 
-static bool is_helper_builtin(const char *name) {
+// built-in functions written as helper functions
+static bool is_helper_builtin(const char* name)
+{
     return strcmp(name, "readLine") == 0 || strcmp(name, "readInt") == 0 || strcmp(name, "readDouble") == 0 || strcmp(name, "subStr") == 0 || strcmp(name, "ord") == 0
-    || strcmp(name, "readBoolean") == 0 || strcmp(name, "readIntMaybe") == 0 || strcmp(name, "readDoubleMaybe") == 0;
+        || strcmp(name, "readBoolean") == 0 || strcmp(name, "readIntMaybe") == 0 || strcmp(name, "readDoubleMaybe") == 0;
 }
 
 // index of a field (PARAM of a case class) in its object;
 // index 0 holds the class name, fields start at 1
-static int field_index(gen_t *g, const tree_node_t *param) {
-    const tree_node_t *def = param;
+static int field_index(gen_t* g, const tree_node_t* param)
+{
+    const tree_node_t* def = param;
     while (def && def->rule != RULE_CASE_CLASS_DEF) {
         def = def->parent;
     }
-    node_list_t fields = {0};
+    node_list_t fields = { 0 };
     collect(g, def, RULE_PARAM, &fields);
     int idx = 0;
     for (size_t i = 0; i < fields.count; i++) {
@@ -349,9 +379,10 @@ static int field_index(gen_t *g, const tree_node_t *param) {
 }
 
 // creating array
-static void gen_constructor(gen_t *g, const tree_node_t *call, const tree_node_t *def) {
+static void gen_constructor(gen_t* g, const tree_node_t* call, const tree_node_t* def)
+{
     push_args(g, call);
-    node_list_t fields = {0};
+    node_list_t fields = { 0 };
     collect(g, def, RULE_PARAM, &fields);
     emit(g, "NEWARRAY GF@$t3 int@%zu", fields.count + 1);
     emit(g, "ARRAYSET GF@$t3 int@0 string@%s", def->children[2]->token.data);
@@ -363,12 +394,13 @@ static void gen_constructor(gen_t *g, const tree_node_t *call, const tree_node_t
     emit(g, "PUSHS GF@$t3");
 }
 
-//function call: every call leaves exactly one value on the stack
-static void gen_call(gen_t *g, const tree_node_t *call) {
-    const char *name = call->children[0]->token.data;
+// function call: every call leaves exactly one value on the stack
+static void gen_call(gen_t* g, const tree_node_t* call)
+{
+    const char* name = call->children[0]->token.data;
 
     // call of a case class = constructor
-    const SemanticNodeInfo *i = semantic_info_find(g->info, call);
+    const SemanticNodeInfo* i = semantic_info_find(g->info, call);
     if (i && i->declaration && i->declaration->rule == RULE_CASE_CLASS_DEF) {
         gen_constructor(g, call, i->declaration);
         return;
@@ -387,8 +419,9 @@ static void gen_call(gen_t *g, const tree_node_t *call) {
 }
 
 // -x as 0 - x, !x as NOT x
-static void gen_unary(gen_t *g, const tree_node_t *node) {
-    const tree_node_t *operand = node->children[1];
+static void gen_unary(gen_t* g, const tree_node_t* node)
+{
+    const tree_node_t* operand = node->children[1];
     if (node->children[0]->token.type == T_NEG) {
         gen_expr(g, operand);
         emit(g, "NOTS");
@@ -406,12 +439,13 @@ static void gen_unary(gen_t *g, const tree_node_t *node) {
 // receiver.member (valmem): toString, toInt, floor, length
 // member is EXPRESSION with one child: the member name
 // node is the whole "receiver . member" expression
-static void gen_member(gen_t *g, const tree_node_t *node) {
-    const tree_node_t *receiver = node->children[0];
-    const tree_node_t *member = node->children[2];
-    const tree_node_t *leaf = member->children[0];
+static void gen_member(gen_t* g, const tree_node_t* node)
+{
+    const tree_node_t* receiver = node->children[0];
+    const tree_node_t* member = node->children[2];
+    const tree_node_t* leaf = member->children[0];
 
-    const SemanticNodeInfo *i = semantic_info_find(g->info, node);
+    const SemanticNodeInfo* i = semantic_info_find(g->info, node);
     if (i && i->declaration && i->declaration->rule == RULE_FUNCTION_DEF) {
         gen_expr(g, receiver);
         if (leaf->type != NODE_TERMINAL) {
@@ -430,7 +464,7 @@ static void gen_member(gen_t *g, const tree_node_t *node) {
         emit(g, "PUSHS GF@$t2");
         return;
     }
-    const char *name = leaf->token.data;
+    const char* name = leaf->token.data;
     gen_expr(g, receiver);
 
     if (strcmp(name, "toString") == 0) {
@@ -461,12 +495,13 @@ static void gen_member(gen_t *g, const tree_node_t *node) {
     } else {
         g->error = 99;
     }
-} 
+}
 
 // a && b, a || b with short-ciruit evaluation: the right side is evaluated only if the left side does not decide
-static void gen_logic(gen_t *g, const tree_node_t *left, const tree_node_t *right, bool is_and) {
+static void gen_logic(gen_t* g, const tree_node_t* left, const tree_node_t* right, bool is_and)
+{
     int n = g->labels++;
-    const char *stop = is_and ? "false" : "true";
+    const char* stop = is_and ? "false" : "true";
     gen_expr(g, left);
     emit(g, "PUSHS bool@%s", stop);
     emit(g, "JUMPIFEQS $logic%d$short", n); // elft == stop -> result is stop
@@ -478,9 +513,10 @@ static void gen_logic(gen_t *g, const tree_node_t *left, const tree_node_t *righ
 }
 
 // E op E: both operands on the stack, then one stack instruction
-static void gen_binary(gen_t *g, const tree_node_t *node) {
-    const tree_node_t *left = node->children[0];
-    const tree_node_t *right = node->children[2];
+static void gen_binary(gen_t* g, const tree_node_t* node)
+{
+    const tree_node_t* left = node->children[0];
+    const tree_node_t* right = node->children[2];
     t_type op = node->children[1]->token.type;
 
     if (op == T_AND || op == T_OR) { // short-circuit evaluation
@@ -497,54 +533,55 @@ static void gen_binary(gen_t *g, const tree_node_t *node) {
     DataType t = expr_type(g, left);
 
     switch (op) {
-        case T_PLUS:
-            if (t == TYPE_STRING) {
-                emit(g, "POPS GF@$t2");
-                emit(g, "POPS GF@$t1");
-                emit(g, "CONCAT GF@$t3 GF@$t1 GF@$t2");
-                emit(g, "PUSHS GF@$t3");
-            } else {
-                emit(g, "ADDS");
-            }
-            break;
-        case T_MINUS:
-            emit(g, "SUBS");
-            break;
-        case T_MULT:
-            emit(g, "MULS");
-            break;
-        case T_DIV:
-            emit(g, t == TYPE_DOUBLE ? "DIVS" : "IDIVS");
-            break;
-        case T_LT:
-            emit(g, "LTS");
-            break;
-        case T_GT:
-            emit(g, "GTS");
-            break;
-        case T_ET:
-            emit(g, "EQS");
-            break;
-        case T_NET:
-            emit(g, "EQS");
-            emit(g, "NOTS");
-            break;
-        case T_LOET:
-            emit(g, "GTS");
-            emit(g, "NOTS");
-            break;
-        case T_GOET:
-            emit(g, "LTS");
-            emit(g, "NOTS");
-            break;
-        default:
-            g->error = 99;
-            break;
+    case T_PLUS:
+        if (t == TYPE_STRING) {
+            emit(g, "POPS GF@$t2");
+            emit(g, "POPS GF@$t1");
+            emit(g, "CONCAT GF@$t3 GF@$t1 GF@$t2");
+            emit(g, "PUSHS GF@$t3");
+        } else {
+            emit(g, "ADDS");
+        }
+        break;
+    case T_MINUS:
+        emit(g, "SUBS");
+        break;
+    case T_MULT:
+        emit(g, "MULS");
+        break;
+    case T_DIV:
+        emit(g, t == TYPE_DOUBLE ? "DIVS" : "IDIVS");
+        break;
+    case T_LT:
+        emit(g, "LTS");
+        break;
+    case T_GT:
+        emit(g, "GTS");
+        break;
+    case T_ET:
+        emit(g, "EQS");
+        break;
+    case T_NET:
+        emit(g, "EQS");
+        emit(g, "NOTS");
+        break;
+    case T_LOET:
+        emit(g, "GTS");
+        emit(g, "NOTS");
+        break;
+    case T_GOET:
+        emit(g, "LTS");
+        emit(g, "NOTS");
+        break;
+    default:
+        g->error = 99;
+        break;
     }
 }
 
 // any expression node: the result is left on the data stack
-static void gen_expr(gen_t *g, const tree_node_t *node) {
+static void gen_expr(gen_t* g, const tree_node_t* node)
+{
     if (node->type == NODE_TERMINAL) {
         gen_term(g, node);
     } else if (node->rule == RULE_EXPRESSION_UNARY) {
@@ -561,16 +598,17 @@ static void gen_expr(gen_t *g, const tree_node_t *node) {
     }
 
     // implicit Int -> Double conversion marked by semantics
-    const SemanticNodeInfo *i = semantic_info_find(g->info, node);
+    const SemanticNodeInfo* i = semantic_info_find(g->info, node);
     if (i && i->promote_to_double) {
         emit(g, "INT2FLOATS");
     }
 }
 
-static void gen_block(gen_t *g, const tree_node_t *block, bool keep);
+static void gen_block(gen_t* g, const tree_node_t* block, bool keep);
 
 // RHS: value
-static void gen_rhs(gen_t *g, const tree_node_t *rhs) {
+static void gen_rhs(gen_t* g, const tree_node_t* rhs)
+{
     if (rhs->rule == RULE_RHS_2) {
         gen_value(g, rhs->children[0]);
     } else {
@@ -579,8 +617,9 @@ static void gen_rhs(gen_t *g, const tree_node_t *rhs) {
 }
 
 // STATEMENTS
-static void gen_return(gen_t *g, const tree_node_t *ret) {
-    const tree_node_t *val = ret->children[1];
+static void gen_return(gen_t* g, const tree_node_t* ret)
+{
+    const tree_node_t* val = ret->children[1];
     if (val->rule == RULE_RETURN_VALUE_1) {
         gen_value(g, val->children[0]);
     } else {
@@ -590,10 +629,11 @@ static void gen_return(gen_t *g, const tree_node_t *ret) {
     emit(g, "RETURN");
 }
 
-static void gen_inline(gen_t *g, const tree_node_t *node, bool keep);
+static void gen_inline(gen_t* g, const tree_node_t* node, bool keep);
 
 // BODY of if/while: block, one statement, or unary expression
-static void gen_body(gen_t *g, const tree_node_t *body, bool keep) {
+static void gen_body(gen_t* g, const tree_node_t* body, bool keep)
+{
     if (body->rule == RULE_BODY_1) {
         gen_block(g, body->children[0], keep);
     } else if (body->rule == RULE_BODY_2) {
@@ -607,7 +647,8 @@ static void gen_body(gen_t *g, const tree_node_t *body, bool keep) {
 }
 
 // IF_STATEMENT children: if, EXPRESSION, then, BODY, ELSE_PART
-static void gen_if(gen_t *g, const tree_node_t *node, bool keep) {
+static void gen_if(gen_t* g, const tree_node_t* node, bool keep)
+{
     int n = g->labels++;
     gen_expr(g, node->children[1]);
     emit(g, "PUSHS bool@true");
@@ -615,7 +656,7 @@ static void gen_if(gen_t *g, const tree_node_t *node, bool keep) {
     gen_body(g, node->children[3], keep);
     emit(g, "JUMP $if%d$end", n);
     emit(g, "LABEL $if%d$else", n);
-    const tree_node_t *else_part = node->children[4];
+    const tree_node_t* else_part = node->children[4];
     if (else_part->rule == RULE_ELSE_PART_1) {
         gen_body(g, else_part->children[1], keep);
     } else if (keep) {
@@ -625,8 +666,9 @@ static void gen_if(gen_t *g, const tree_node_t *node, bool keep) {
 }
 
 // WHILE_STATEMENT children: whie, EXPRESSION, do, BODY
-static void gen_while(gen_t *g, const tree_node_t *node, bool keep) {
-    int n = g-> labels++;
+static void gen_while(gen_t* g, const tree_node_t* node, bool keep)
+{
+    int n = g->labels++;
     emit(g, "LABEL $while%d", n);
     gen_expr(g, node->children[1]);
     emit(g, "PUSHS bool@true");
@@ -640,7 +682,8 @@ static void gen_while(gen_t *g, const tree_node_t *node, bool keep) {
 }
 
 // evaluates all guards of a for header, a false guard skips the body
-static void gen_guards(gen_t *g, const tree_node_t *node, int n) {
+static void gen_guards(gen_t* g, const tree_node_t* node, int n)
+{
     if (node->type != NODE_NONTERMINAL) {
         return;
     }
@@ -656,13 +699,14 @@ static void gen_guards(gen_t *g, const tree_node_t *node, int n) {
 
 // FOR_STATEMENT children: for, FOR_HEADER, do, BODY
 // GENERATOR children: id, <-, EXPRESSION, RANGE_OP, EXPRESSION, STEP
-static void gen_for(gen_t *g, const tree_node_t *node, bool keep) {
+static void gen_for(gen_t* g, const tree_node_t* node, bool keep)
+{
     int n = g->labels++;
-    const tree_node_t *header = node->children[1];
-    const tree_node_t *gen = header->rule == RULE_FOR_HEADER_1 ? header->children[0] : header->children[2];
-    const tree_node_t *step = gen->children[5];
+    const tree_node_t* header = node->children[1];
+    const tree_node_t* gen = header->rule == RULE_FOR_HEADER_1 ? header->children[0] : header->children[2];
+    const tree_node_t* step = gen->children[5];
     bool until = gen->children[3]->rule == RULE_RANGE_OP_2;
-    const char *name = decl_name(gen);
+    const char* name = decl_name(gen);
     size_t id = decl_id(g, gen);
 
     // start, end and step are evaluated only once, before the loop
@@ -709,23 +753,30 @@ static void gen_for(gen_t *g, const tree_node_t *node, bool keep) {
 }
 
 // IFJcode26 type name (result of TYPE) for a type in a pattern; for a case class returns "array" and sets *cls to the class name
-static const char *pattern_type(const tree_node_t *type, const char **cls) {
+static const char* pattern_type(const tree_node_t* type, const char** cls)
+{
     *cls = NULL;
-    const tree_node_t *simple = type->children[0];
+    const tree_node_t* simple = type->children[0];
     switch (simple->rule) {
-        case RULE_SIMPLE_TYPE_1: return "int";
-        case RULE_SIMPLE_TYPE_2: return "float";
-        case RULE_SIMPLE_TYPE_3: return "string";
-        case RULE_SIMPLE_TYPE_4: return "nil";
-        case RULE_SIMPLE_TYPE_5: return "bool";
-        default:
-            *cls = simple->children[0]->token.data;
-            return "array";
+    case RULE_SIMPLE_TYPE_1:
+        return "int";
+    case RULE_SIMPLE_TYPE_2:
+        return "float";
+    case RULE_SIMPLE_TYPE_3:
+        return "string";
+    case RULE_SIMPLE_TYPE_4:
+        return "nil";
+    case RULE_SIMPLE_TYPE_5:
+        return "bool";
+    default:
+        *cls = simple->children[0]->token.data;
+        return "array";
     }
-} 
+}
 
 // jumps to fail unless var is an object of the case class cls
-static void test_class(gen_t *g, const char *var, const char *cls, const char *fail) {
+static void test_class(gen_t* g, const char* var, const char* cls, const char* fail)
+{
     emit(g, "TYPE GF@$t1 %s", var);
     emit(g, "JUMPIFNEQ %s GF@$t1 string@array", fail);
     emit(g, "ARRAYGET GF@$t1 %s int@0", var);
@@ -733,31 +784,34 @@ static void test_class(gen_t *g, const char *var, const char *cls, const char *f
 }
 
 // literal pattern: jumps to fail unless var equals it. the type is compared first, comparing different types is an error 53.
-static void test_literal(gen_t *g, const tree_node_t *lit, const char *var, const char *fail) {
-    const char *type;
+static void test_literal(gen_t* g, const tree_node_t* lit, const char* var, const char* fail)
+{
+    const char* type;
     switch (lit->rule) {
-        case RULE_LITERAL_PATTERN_1: 
-            type = "int";
-            break;
-        case RULE_LITERAL_PATTERN_2:
-            type = "float";
-            break;
-        case RULE_LITERAL_PATTERN_3:
-            type = "string";
-            break;
-        case RULE_LITERAL_PATTERN_4:
-            type = "bool";
-            break;
-        case RULE_LITERAL_PATTERN_5:
-            type = lit->children[1]->rule == RULE_NUMBER_1 ? "int" : "float";
-            break;
-        default: type = "nil"; break;
+    case RULE_LITERAL_PATTERN_1:
+        type = "int";
+        break;
+    case RULE_LITERAL_PATTERN_2:
+        type = "float";
+        break;
+    case RULE_LITERAL_PATTERN_3:
+        type = "string";
+        break;
+    case RULE_LITERAL_PATTERN_4:
+        type = "bool";
+        break;
+    case RULE_LITERAL_PATTERN_5:
+        type = lit->children[1]->rule == RULE_NUMBER_1 ? "int" : "float";
+        break;
+    default:
+        type = "nil";
+        break;
     }
     emit(g, "TYPE GF@$t1 %s", var);
     emit(g, "JUMPIFNEQ %s GF@$t1 string@%s", fail, type);
     emit(g, "PUSHS %s", var);
     if (lit->rule == RULE_LITERAL_PATTERN_5) {
-        const tree_node_t *num = lit->children[1]->children[0];
+        const tree_node_t* num = lit->children[1]->children[0];
         emit(g, num->token.type == T_INT ? "PUSHS int@0" : "PUSHS float@0x0p+0");
         gen_term(g, num);
         emit(g, "SUBS");
@@ -768,18 +822,19 @@ static void test_literal(gen_t *g, const tree_node_t *lit, const char *var, cons
 }
 
 // one pattern of a case: var holds the matched value
-static void gen_pattern(gen_t *g, const tree_node_t *pat, const char *var, const char *fail) {
-    if (pat->rule == RULE_PATTERN_1) { 
+static void gen_pattern(gen_t* g, const tree_node_t* pat, const char* var, const char* fail)
+{
+    if (pat->rule == RULE_PATTERN_1) {
         return;
     }
     if (pat->rule == RULE_PATTERN_3) {
         test_literal(g, pat->children[0], var, fail);
         return;
     }
-    const tree_node_t *detail = pat->children[1];
+    const tree_node_t* detail = pat->children[1];
     if (detail->rule == RULE_ID_PATTERN_1) {
-        const char *cls;
-        const char *type = pattern_type(detail->children[1], &cls);
+        const char* cls;
+        const char* type = pattern_type(detail->children[1], &cls);
         if (cls) {
             test_class(g, var, cls, fail);
         } else {
@@ -790,11 +845,11 @@ static void gen_pattern(gen_t *g, const tree_node_t *pat, const char *var, const
         return;
     }
     test_class(g, var, pat->children[0]->token.data, fail);
-    node_list_t order = {0};
-    for (const tree_node_t *n = detail; n;) {
-        const tree_node_t *next = NULL;
+    node_list_t order = { 0 };
+    for (const tree_node_t* n = detail; n;) {
+        const tree_node_t* next = NULL;
         for (size_t i = 0; i < n->children_count; i++) {
-            const tree_node_t *c = n->children[i];
+            const tree_node_t* c = n->children[i];
             if (c->rule == RULE_SUBPATTERN_1 || c->rule == RULE_SUBPATTERN_2 || c->rule == RULE_SUBPATTERN_3) {
                 list_push(g, &order, c);
             } else if (c->rule == RULE_SUBPATTERN_LIST_1 || c->rule == RULE_SUBPATTERN_REST_1) {
@@ -804,7 +859,7 @@ static void gen_pattern(gen_t *g, const tree_node_t *pat, const char *var, const
         n = next;
     }
     for (size_t i = 0; i < order.count; i++) {
-        const tree_node_t *sub = order.items[i];
+        const tree_node_t* sub = order.items[i];
         if (sub->rule == RULE_SUBPATTERN_1) { // bind field to a vriable
             emit(g, "ARRAYGET LF@%s$%zu %s int@%zu", decl_name(sub), decl_id(g, sub), var, i + 1);
         } else if (sub->rule == RULE_SUBPATTERN_3) {
@@ -815,8 +870,9 @@ static void gen_pattern(gen_t *g, const tree_node_t *pat, const char *var, const
     free(order.items);
 }
 
-static void gen_match(gen_t *g, const tree_node_t *node, bool keep) {
-    const tree_node_t *suffix = node->children[1];
+static void gen_match(gen_t* g, const tree_node_t* node, bool keep)
+{
+    const tree_node_t* suffix = node->children[1];
     int n = g->labels++;
     char var[64];
     snprintf(var, sizeof(var), "LF@$match$%zu", decl_id(g, suffix));
@@ -825,13 +881,13 @@ static void gen_match(gen_t *g, const tree_node_t *node, bool keep) {
     emit(g, "POPS %s", var);
 
     int k = 0;
-    for (const tree_node_t *list = suffix->children[3]; list->rule != RULE_CASE_LIST_REST_2; list = list->children[1], k++) {
-        const tree_node_t *clause = list->children[0];
+    for (const tree_node_t* list = suffix->children[3]; list->rule != RULE_CASE_LIST_REST_2; list = list->children[1], k++) {
+        const tree_node_t* clause = list->children[0];
         char fail[64];
         snprintf(fail, sizeof(fail), "$match%d$case%d", n, k);
 
         gen_pattern(g, clause->children[1], var, fail);
-        const tree_node_t *guard = clause->children[2];
+        const tree_node_t* guard = clause->children[2];
         if (guard->rule == RULE_CASE_GUARD_1) {
             gen_expr(g, guard->children[1]);
             emit(g, "PUSHS bool@true");
@@ -847,7 +903,8 @@ static void gen_match(gen_t *g, const tree_node_t *node, bool keep) {
     emit(g, "LABEL $match%d$end", n);
 }
 
-static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
+static void gen_inline(gen_t* g, const tree_node_t* node, bool keep)
+{
     if (node->rule == RULE_INLINE_STATEMENT_1) {
         gen_return(g, node->children[0]);
         return;
@@ -865,7 +922,7 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
         return;
     }
     if (node->rule == RULE_INLINE_STATEMENT_5) {
-        const tree_node_t *rest = node->children[node->children_count - 1];
+        const tree_node_t* rest = node->children[node->children_count - 1];
         if (rest->rule == RULE_ID_STATEMENT_1) { // x = value
             gen_rhs(g, rest->children[1]);
             emit_var(g, "POPS", node->children[0]);
@@ -879,7 +936,7 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
             }
             return;
         }
-    } else if (node->rule == RULE_INLINE_STATEMENT_6 && node->children[1]->rule == RULE_MATCH_SUFFIX_1) { 
+    } else if (node->rule == RULE_INLINE_STATEMENT_6 && node->children[1]->rule == RULE_MATCH_SUFFIX_1) {
         gen_match(g, node, keep);
         return;
     } else if (node->rule == RULE_INLINE_STATEMENT_6) {
@@ -896,12 +953,11 @@ static void gen_inline(gen_t *g, const tree_node_t *node, bool keep) {
     }
 }
 
-
-
 // STATEMENT_1 = val/var definition, STATEMENT_2 = other statements
-static void gen_statement(gen_t *g, const tree_node_t *stmt, bool keep) {
+static void gen_statement(gen_t* g, const tree_node_t* stmt, bool keep)
+{
     if (stmt->rule == RULE_STATEMENT_1) {
-        const tree_node_t *def = stmt->children[0]; // VAR_DEFINITION
+        const tree_node_t* def = stmt->children[0]; // VAR_DEFINITION
         gen_rhs(g, def->children[4]);
         emit(g, "POPS LF@%s$%zu", decl_name(def), decl_id(g, def));
         if (keep) {
@@ -913,9 +969,10 @@ static void gen_statement(gen_t *g, const tree_node_t *stmt, bool keep) {
 }
 
 // one line: statement
-static void gen_statement_line(gen_t *g, const tree_node_t *line, bool keep) {
-    const tree_node_t *stmt = line->children[0];
-    for (const tree_node_t *r = line->children[1]; r->rule == RULE_STATEMENT_LINE_REST_1; r = r->children[2]) {
+static void gen_statement_line(gen_t* g, const tree_node_t* line, bool keep)
+{
+    const tree_node_t* stmt = line->children[0];
+    for (const tree_node_t* r = line->children[1]; r->rule == RULE_STATEMENT_LINE_REST_1; r = r->children[2]) {
         gen_statement(g, stmt, false);
         stmt = r->children[1];
     }
@@ -923,10 +980,11 @@ static void gen_statement_line(gen_t *g, const tree_node_t *line, bool keep) {
 }
 
 // block children: \n, INDENT, STATEMENT_LIST, DEDENT
-static void gen_block(gen_t *g, const tree_node_t *block, bool keep) {
-    const tree_node_t *list = block->children[2];
-    const tree_node_t *line = list->children[0];
-    for (const tree_node_t *r = list->children[1]; r->rule == RULE_STATEMENT_LIST_REST_1; r = r->children[1]) {
+static void gen_block(gen_t* g, const tree_node_t* block, bool keep)
+{
+    const tree_node_t* list = block->children[2];
+    const tree_node_t* line = list->children[0];
+    for (const tree_node_t* r = list->children[1]; r->rule == RULE_STATEMENT_LIST_REST_1; r = r->children[1]) {
         gen_statement_line(g, line, false);
         line = r->children[0];
     }
@@ -935,70 +993,72 @@ static void gen_block(gen_t *g, const tree_node_t *block, bool keep) {
 
 // FUNCTIONS
 // returns the FUNCTION_DEF of a top-level item, or NULL if it is not a function
-static const tree_node_t *item_function(const tree_node_t *item) {
+static const tree_node_t* item_function(const tree_node_t* item)
+{
     switch (item->rule) {
-        case RULE_TOP_ITEM_1:
-            return item->children[2];
-        case RULE_TOP_ITEM_2:
-            return item->children[0];
-        default:
-            return NULL; 
+    case RULE_TOP_ITEM_1:
+        return item->children[2];
+    case RULE_TOP_ITEM_2:
+        return item->children[0];
+    default:
+        return NULL;
     }
 }
 
 // generates one function: label, its own frame, body, return
-static void gen_function(gen_t *g, const tree_node_t *def) {
+static void gen_function(gen_t* g, const tree_node_t* def)
+{
     emit(g, "# --- function %s ---", function_name(def));
-    
+
     // extension methods get a unique label
-    const tree_node_t *ext = method_extension(def);
+    const tree_node_t* ext = method_extension(def);
     if (ext) {
         emit(g, "LABEL $m_%s$%zu", function_name(def), decl_id(g, def));
     } else {
         emit(g, "LABEL $f_%s", function_name(def));
     }
     emit(g, "PUSHFRAME");
-    
-    node_list_t params = {0};
+
+    node_list_t params = { 0 };
     collect(g, def->children[2], RULE_PARAM, &params);
     for (size_t i = 0; i < params.count; i++) {
-        const tree_node_t *p = params.items[i];
+        const tree_node_t* p = params.items[i];
         emit(g, "DEFVAR LF@%s$%zu", decl_name(p), decl_id(g, p));
     }
     for (size_t i = params.count; i > 0; i--) {
-        const tree_node_t *p = params.items[i - 1];
+        const tree_node_t* p = params.items[i - 1];
         emit(g, "POPS LF@%s$%zu", decl_name(p), decl_id(g, p));
     }
     free(params.items);
 
     // method receiver (PARAM of the extension) was pushed first
     if (ext) {
-        const tree_node_t *r = ext->children[2];
+        const tree_node_t* r = ext->children[2];
         emit(g, "DEFVAR LF@%s$%zu", decl_name(r), decl_id(g, r));
         emit(g, "POPS LF@%s$%zu", decl_name(r), decl_id(g, r));
     }
 
     // all local variables defined once, at the start of the function
-    node_list_t locals = {0};
+    node_list_t locals = { 0 };
     collect(g, def->children[5], RULE_VAR_DEFINITION, &locals);
     for (size_t i = 0; i < locals.count; i++) {
-        const tree_node_t *v = locals.items[i];
+        const tree_node_t* v = locals.items[i];
         emit(g, "DEFVAR LF@%s$%zu", decl_name(v), decl_id(g, v));
     }
     free(locals.items);
 
     // hidden variable if each match and pattern variables
-    node_list_t matches = {0};
+    node_list_t matches = { 0 };
     collect(g, def->children[5], RULE_MATCH_SUFFIX_1, &matches);
     for (size_t i = 0; i < matches.count; i++) {
         emit(g, "DEFVAR LF@$match$%zu", decl_id(g, matches.items[i]));
     }
     free(matches.items);
-    node_list_t binds = {0};
+    node_list_t binds = { 0 };
     collect(g, def->children[5], RULE_PATTERN_2, &binds);
     collect(g, def->children[5], RULE_SUBPATTERN_1, &binds);
     for (size_t i = 0; i < binds.count; i++) {
-        const tree_node_t *b = binds.items[i];
+        const tree_node_t* b = binds.items[i];
         if (b->rule == RULE_PATTERN_2 && b->children[1]->rule != RULE_ID_PATTERN_1) {
             continue;
         }
@@ -1007,10 +1067,10 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
     free(binds.items);
 
     // for loop variables and their hidden end and step
-    node_list_t loops = {0};
+    node_list_t loops = { 0 };
     collect(g, def->children[5], RULE_GENERATOR, &loops);
     for (size_t i = 0; i < loops.count; i++) {
-        const tree_node_t *v = loops.items[i];
+        const tree_node_t* v = loops.items[i];
         size_t id = decl_id(g, v);
         emit(g, "DEFVAR LF@%s$%zu", decl_name(v), id);
         emit(g, "DEFVAR LF@$end$%zu", id);
@@ -1025,7 +1085,8 @@ static void gen_function(gen_t *g, const tree_node_t *def) {
 }
 
 // helper functions for built-ins that need jumps
-static void gen_builtins(gen_t *g) {
+static void gen_builtins(gen_t* g)
+{
     // readLine(): READ returns nil at EOF -> ""
     emit(g, "# --- builtin readLine ---");
     emit(g, "LABEL $b_readLine");
@@ -1141,14 +1202,15 @@ static void gen_builtins(gen_t *g) {
     emit(g, "EXIT int@40");
 }
 
-int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) {
-    gen_t g = {out, info, {0}, 0, 0};
+int generate_code(const tree_node_t* root, const SemanticInfo* info, FILE* out)
+{
+    gen_t g = { out, info, { 0 }, 0, 0 };
 
-    const tree_node_t *top = tree_get_child(root, 2);
+    const tree_node_t* top = tree_get_child(root, 2);
 
-    //find the function marked with @main
-    const tree_node_t *main_def = NULL;
-    for (const tree_node_t *list = top; list && list->rule == RULE_TOP_LIST_1; list = list->children[1]) {
+    // find the function marked with @main
+    const tree_node_t* main_def = NULL;
+    for (const tree_node_t* list = top; list && list->rule == RULE_TOP_LIST_1; list = list->children[1]) {
         if (list->children[0]->rule == RULE_TOP_ITEM_1) {
             main_def = item_function(list->children[0]);
         }
@@ -1168,13 +1230,13 @@ int generate_code(const tree_node_t *root, const SemanticInfo *info, FILE *out) 
     emit(&g, "EXIT int@0");
 
     // all functions
-    for (const tree_node_t *list = top; list && list->rule == RULE_TOP_LIST_1; list = list->children[1]) {
-        const tree_node_t *def = item_function(list->children[0]);
+    for (const tree_node_t* list = top; list && list->rule == RULE_TOP_LIST_1; list = list->children[1]) {
+        const tree_node_t* def = item_function(list->children[0]);
         if (def) {
             gen_function(&g, def);
         }
         if (list->children[0]->rule == RULE_TOP_ITEM_5) { // extension
-            node_list_t methods = {0};
+            node_list_t methods = { 0 };
             collect(&g, list->children[0], RULE_FUNCTION_DEF, &methods);
             for (size_t i = 0; i < methods.count; i++) {
                 gen_function(&g, methods.items[i]);

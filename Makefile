@@ -2,6 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c11 -g
 
 SRC = $(wildcard src/*.c)
+HDR = $(wildcard src/*.h)
 
 TARGET = ifj
 
@@ -13,7 +14,10 @@ lex_test: $(TARGET)
 
 test: lex_test
 
+format:
+	clang-format -i $(SRC) $(HDR)
+
 clean:
 	rm -f $(TARGET)
 
-.PHONY: all clean
+.PHONY: all clean format
