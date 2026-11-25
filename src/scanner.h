@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Token types recognized by the lexical analyzer
 typedef enum {
     T_ID, // id
 
@@ -32,7 +33,7 @@ typedef enum {
     KW_CLASS,
     KW_EXTENSION,
     KW_FOR,
-    KW_LIST, // pravdepodobne netreba spracovat v nasom pripade
+    KW_LIST,
     KW_MATCH,
     KW_TYPE,
     KW_TO,
@@ -44,9 +45,9 @@ typedef enum {
     T_STRING, // string
 
     T_UNIT_BRACKETS, // ()
-    T_SPACE, // biely znak
-    T_LF, // koniec riadku
-    T_EOF, // koniec suboru
+    T_SPACE, // white symbol
+    T_LF, // end of line
+    T_EOF, // end of file
     T_IFJ, // ifj26.*
     T_MAIN, //@main
 
@@ -102,11 +103,13 @@ typedef struct {
     int line;
 } Token;
 
+// Maps a reserved keyword string to its corresponding token type
 typedef struct {
     const char* keyword;
     t_type type;
 } KeyWord;
 
+// Lookup table for reserved keywords
 static const KeyWord keywords[] = {
     { "def", KW_DEF },
     { "do", KW_DO },
@@ -144,6 +147,7 @@ typedef struct {
     size_t capacity;
 } Buffer;
 
+// States of the finite state machine (DFA) in get_toke
 typedef enum {
     S_START,
     S_ID,

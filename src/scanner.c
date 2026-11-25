@@ -7,27 +7,33 @@
 int line_now = 1;
 bool gap = false, next_lf = false, found_com_lf = false;
 
+// Initializes a dynamic string buffer with a default capacity of 16 bytes
 void buffer_init(Buffer* buf)
 {
     buf->length = 0;
     buf->capacity = 16;
     buf->data = malloc(buf->capacity * sizeof(char));
     if (buf->data) {
+        // Keep the buffer null-terminated from the start so C string functions are safe
         buf->data[buf->length] = '\0';
     }
 }
 
+// Appends a single character and doubles buffer capacity when full
 void buffer_append(Buffer* buf, char c)
 {
+    // Leave 1 byte for the terminating '\0' character
     if (buf->length >= buf->capacity - 1) {
         buf->capacity = buf->capacity * 2;
         buf->data = realloc(buf->data, buf->capacity * sizeof(char));
     }
     buf->data[buf->length] = c;
     buf->length++;
+    // Maintain null termination after adding the character
     buf->data[buf->length] = '\0';
 }
 
+// Resets buffer content to an empty string without freeing allocated memory
 void buffer_clear(Buffer* buf)
 {
     if (buf->data != NULL) {
@@ -36,6 +42,7 @@ void buffer_clear(Buffer* buf)
     buf->length = 0;
 }
 
+// Frees heap memory owned by the buffer and resets its metadata
 void buffer_free(Buffer* buf)
 {
     free(buf->data);
@@ -44,6 +51,7 @@ void buffer_free(Buffer* buf)
     buf->capacity = 0;
 }
 
+// Helper function: checks if token->data matches a reserved keyword and updates its token type
 bool is_keyword(Token* token)
 {
     bool found = false;
@@ -57,6 +65,8 @@ bool is_keyword(Token* token)
     return found;
 }
 
+// Helper function: compares current indentation (dent) against the stack (pole_dent)
+// Returns 1 for indent, -1 for dedent, 0 for same level, or -2 on invalid dedent underflow
 int what_dent(int dent, int* pos, int pole_dent[])
 {
     if (dent > pole_dent[*pos]) {
@@ -82,34 +92,41 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
     State state = S_START;
     int c = -1, left = 0, right = 0, res = 0;
     bool exponent = false, has_d = false, has_end = false;
+    // Handle pending indentation changes before scanning the next token
     if (!(*processed)) {
         res = what_dent(*dent, pos, pole_dent);
         if (res == 1) {
+            // New deeper indentation level
             *mul_de = true;
             *dent = 0;
             *processed = true;
             token->type = T_INDENT;
             return 0;
         } else if (res == -1) {
+            // New deeper indentation level
             if (pole_dent[*pos] == 0) {
                 *mul_de = false;
             }
             token->type = T_DEDENT;
             return 0;
         } else if (res == 0) {
+            // Indentation matches current level
             *dent = 0;
             *processed = true;
         } else {
+            // Invalid indentation
             return 1;
         }
     }
 
+    // Main lexer loop: reads one character at a time and transitions through the DFA states
     while (1) {
         c = fgetc(src);
         switch (state) {
         case S_START:
             token->line = line_now;
             if (c == EOF) {
+                // Flush remaining indentation levels as DEDENT tokens before reporting EOF
                 if (pole_dent[*pos] != 0) {
                     what_dent(*dent, pos, pole_dent);
                     ungetc(c, src);
@@ -272,10 +289,12 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
             }
             buffer_clear(buffer);
             return 1;
+        // Identifiers, keywords, wildcard '_', and built-in "ifj26.*" prefix
         case S_ID:
             if (isalpha(c) || c == '_' || isdigit(c)) {
                 buffer_append(buffer, (char)c);
                 break;
+            // Special prefix for built-in "ifj26.*" references
             } else if (c == '.' && strcmp(buffer->data, "ifj26") == 0) {
                 buffer_append(buffer, (char)c);
                 state = S_IFJ;
@@ -311,6 +330,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 2;
             }
+        // Numeric literals: leading-zero rules, '_' digit separators, decimals, and exponents
         case S_ZERO:
             if (isdigit(c)) {
                 buffer_clear(buffer);
@@ -468,6 +488,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 1;
             }
+        // Single-line ("...") and multi-line ("""...""") string literals with escape sequences
         case S_STR1:
             if (c == '"') {
                 buffer_append(buffer, (char)c);
@@ -546,6 +567,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 1;
             }
+        // Entry point literal ("@main")
         case S_MAIN1:
             if (c == 'm') {
                 buffer_append(buffer, (char)c);
@@ -584,6 +606,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 1;
             }
+        // Comments: line comments (//) and nested block comments (/* ... */)
         case S_DIV_COMMENT:
             if (c == '/') {
                 buffer_append(buffer, (char)c);
@@ -610,6 +633,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_append(buffer, (char)c);
                 break;
             }
+        // Track nested '/*' (left) and '*/' (right) pairs; 'has_end' detects multiline comments
         case S_BLOCK_COM1:
             if (c == 10) {
                 has_end = true;
@@ -703,6 +727,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 state = S_BLOCK_COM1;
                 break;
             }
+        // After a multiline block comment closes, only trailing spaces are allowed before LF/EOF
         case S_BLOCK_WAIT_END:
             if (c == ' ') {
                 buffer_append(buffer, (char)c);
@@ -716,6 +741,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 1;
             }
+        // Single- and two-character operators
         case S_LPARENTH:
             if (c == ')') {
                 buffer_append(buffer, (char)c);
@@ -848,6 +874,7 @@ int get_token(FILE* src, Token* token, Buffer* buffer, int* dent, bool* processe
                 buffer_clear(buffer);
                 return 1;
             }
+        // Newline handling: counts leading spaces into *dent and defers indentation check to next call
         case S_LF:
             if (c == 10) {
                 line_now++;
