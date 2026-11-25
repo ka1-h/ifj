@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Karin Hlavatá <xhlavak00>
+
 #include "generator.h"
 
 #include <stdarg.h>

@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Branislav Krátky <xkratkb00>
+
 #include "generator.h"
 #include "scanner.h"
 #include "semantics.h"

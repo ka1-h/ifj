@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Branislav Krátky <xkratkb00>
+
 #ifndef SCANNER_H
 #define SCANNER_H
 #include <ctype.h>

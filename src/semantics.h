@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Klára Luskačová <xluskak00>
+
 #ifndef SEMANTIC_H
 #define SEMANTIC_H
 

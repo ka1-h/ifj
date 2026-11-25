@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Branislav Krátky <xkratkb00>
+
 #define _POSIX_C_SOURCE 200809L
 #include "scanner.h"
 

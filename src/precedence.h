@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Karin Hlavatá <xhlavak00>
+
 #ifndef EXPRESSION_H
 #define EXPRESSION_H
 

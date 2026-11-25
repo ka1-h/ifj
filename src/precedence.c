@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Karin Hlavatá <xhlavak00>
+
 #include "precedence.h"
 #include <stdlib.h>
 #include <string.h>

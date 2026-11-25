@@ -1,3 +1,4 @@
+// project: IFJ26 compiler
 // author: Daniel Čerešňa <xceresd00>
 
 #include "tree.h"
