@@ -1,0 +1,19 @@
+import ifj26.*
+
+@main def main(): Unit =
+    val a = 7
+    var b: Double = 2
+    print(a / 2)
+    print("\n")
+    print(a * 2 + 1)
+    print("\n")
+    b = b * a
+    print(b)
+    print("\n")
+    print(-a)
+    print("\n")
+    print("ahoj" + " svet #1\n")
+    print(1_000)
+    print("\n")
+    print(())
+    print("\n")

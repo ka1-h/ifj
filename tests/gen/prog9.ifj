@@ -1,0 +1,19 @@
+import ifj26.*
+
+extension (value: Int)
+    def twice: Int = value * 2
+    def plus(other: Int): Int = value + other
+    def show(): String = "<" + toStr(value) + ">"
+
+extension (s: String)
+    def twice: String = s + s
+
+@main def main(): Unit =
+    val x = 5
+    print(x.twice)
+    print("\n")
+    print(x.plus(12).twice)
+    print("\n")
+    print(x.show())
+    print("\n")
+    print("ab".twice + "!\n")

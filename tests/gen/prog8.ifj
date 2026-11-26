@@ -1,0 +1,17 @@
+import ifj26.*
+
+@main def main(): Unit =
+    val number = -3.7
+    print("truncated: " + number.toInt.toString + "\n")
+    print("floor: " + toStr(number.floor) + "\n")
+    print(number.floor)
+    print("\n")
+    print(2.5.floor.toInt)
+    print("\n")
+    print(number.floor.toInt)
+    print("\n")
+    val s = "abc"
+    print(s.length + 1)
+    print("\n")
+    print((s + "de").length.toString + "!\n")
+    print(true.toString + ().toString + "\n")

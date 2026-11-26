@@ -1,19 +1,26 @@
+// project: IFJ26 compiler
+// author: Daniel Čerešňa <xceresd00>
+
+// This file is inspired by last years implementation of the same tree by the same author.
+
 #include "tree.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-static char *copy_string(const char *s) {
+static char* copy_string(const char* s)
+{
     size_t len = strlen(s) + 1;
-    char *copy = malloc(len);
+    char* copy = malloc(len);
     if (copy) {
         memcpy(copy, s, len);
     }
     return copy;
 }
 
-static tree_node_t *tree_new(tree_node_type_t type) {
-    tree_node_t *node = calloc(1, sizeof(tree_node_t));
+static tree_node_t* tree_new(tree_node_type_t type)
+{
+    tree_node_t* node = calloc(1, sizeof(tree_node_t));
     if (!node) {
         return NULL;
     }
@@ -22,12 +29,13 @@ static tree_node_t *tree_new(tree_node_type_t type) {
     return node;
 }
 
-tree_node_t *tree_create_terminal(const Token *token) {
+tree_node_t* tree_create_terminal(const Token* token)
+{
     if (!token) {
         return NULL;
     }
 
-    tree_node_t *node = tree_new(NODE_TERMINAL);
+    tree_node_t* node = tree_new(NODE_TERMINAL);
     if (!node) {
         return NULL;
     }
@@ -42,22 +50,24 @@ tree_node_t *tree_create_terminal(const Token *token) {
     return node;
 }
 
-tree_node_t *tree_create_nonterminal(tree_rule_t rule) {
-    tree_node_t *node = tree_new(NODE_NONTERMINAL);
+tree_node_t* tree_create_nonterminal(tree_rule_t rule)
+{
+    tree_node_t* node = tree_new(NODE_NONTERMINAL);
     if (node) {
         node->rule = rule;
     }
     return node;
 }
 
-bool tree_add_child(tree_node_t *parent, tree_node_t *child) {
+bool tree_add_child(tree_node_t* parent, tree_node_t* child)
+{
     if (!parent || !child || child->parent) {
         return false;
     }
 
     if (parent->children_count == parent->children_capacity) {
         size_t new_capacity = parent->children_capacity ? parent->children_capacity * 2 : 4;
-        tree_node_t **tmp = realloc(parent->children, new_capacity * sizeof(tree_node_t *));
+        tree_node_t** tmp = realloc(parent->children, new_capacity * sizeof(tree_node_t*));
         if (!tmp) {
             return false;
         }
@@ -70,16 +80,17 @@ bool tree_add_child(tree_node_t *parent, tree_node_t *child) {
     return true;
 }
 
-bool tree_detach(tree_node_t *node) {
+bool tree_detach(tree_node_t* node)
+{
     if (!node || !node->parent) {
         return false;
     }
 
-    tree_node_t *parent = node->parent;
+    tree_node_t* parent = node->parent;
     for (size_t i = 0; i < parent->children_count; i++) {
         if (parent->children[i] == node) {
             memmove(&parent->children[i], &parent->children[i + 1],
-                    (parent->children_count - i - 1) * sizeof(tree_node_t *));
+                (parent->children_count - i - 1) * sizeof(tree_node_t*));
             parent->children_count--;
             node->parent = NULL;
             return true;
@@ -88,7 +99,8 @@ bool tree_detach(tree_node_t *node) {
     return false;
 }
 
-void tree_remove(tree_node_t *node) {
+void tree_remove(tree_node_t* node)
+{
     if (!node) {
         return;
     }
@@ -96,15 +108,16 @@ void tree_remove(tree_node_t *node) {
     tree_dispose(&node);
 }
 
-void tree_dispose(tree_node_t **root) {
+void tree_dispose(tree_node_t** root)
+{
     if (!root || !*root) {
         return;
     }
 
-    tree_node_t *node = *root;
+    tree_node_t* node = *root;
     for (size_t i = 0; i < node->children_count; i++) {
-        tree_node_t *child = node->children[i];
-        child->parent = NULL;   // avoid detach work in the recursion
+        tree_node_t* child = node->children[i];
+        child->parent = NULL; // avoid detach work in the recursion
         tree_dispose(&child);
     }
     free(node->children);
@@ -115,15 +128,17 @@ void tree_dispose(tree_node_t **root) {
     *root = NULL;
 }
 
-tree_node_t *tree_get_child(const tree_node_t *node, size_t index) {
+tree_node_t* tree_get_child(const tree_node_t* node, size_t index)
+{
     if (!node || index >= node->children_count) {
         return NULL;
     }
     return node->children[index];
 }
 
-const char *tree_rule_name(tree_rule_t rule) {
-    static const char *const rule_names[] = {
+const char* tree_rule_name(tree_rule_t rule)
+{
+    static const char* const rule_names[] = {
         "PROGRAM",
         "PROLOG",
         "TOP_LIST_1",
@@ -269,7 +284,8 @@ const char *tree_rule_name(tree_rule_t rule) {
     return rule_names[rule];
 }
 
-static void print_label(const tree_node_t *node, FILE *out) {
+static void print_label(const tree_node_t* node, FILE* out)
+{
     if (node->type == NODE_NONTERMINAL) {
         fprintf(out, "<%s>", tree_rule_name(node->rule));
     } else if (node->token.type == T_LF) {
@@ -279,17 +295,18 @@ static void print_label(const tree_node_t *node, FILE *out) {
     }
 }
 
-static void print_rec(const tree_node_t *node, FILE *out, const char *prefix, bool is_last) {
+static void print_rec(const tree_node_t* node, FILE* out, const char* prefix, bool is_last)
+{
     fputs(prefix, out);
     fputs(is_last ? "└── " : "├── ", out);
     print_label(node, out);
     fputc('\n', out);
 
-    static const char *const pad_last = "    ";
-    static const char *const pad_more = "│   ";
-    const char *pad = is_last ? pad_last : pad_more;
+    static const char* const pad_last = "    ";
+    static const char* const pad_more = "│   ";
+    const char* pad = is_last ? pad_last : pad_more;
 
-    char *child_prefix = malloc(strlen(prefix) + strlen(pad) + 1);
+    char* child_prefix = malloc(strlen(prefix) + strlen(pad) + 1);
     if (!child_prefix) {
         return;
     }
@@ -302,7 +319,8 @@ static void print_rec(const tree_node_t *node, FILE *out, const char *prefix, bo
     free(child_prefix);
 }
 
-void tree_print(const tree_node_t *root, FILE *out) {
+void tree_print(const tree_node_t* root, FILE* out)
+{
     if (!root || !out) {
         return;
     }

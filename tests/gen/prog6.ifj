@@ -1,0 +1,32 @@
+import ifj26.*
+
+def isEven(n: Int): Boolean = n / 2 * 2 == n
+
+def loud(b: Boolean): Boolean =
+    print("eval\n")
+    b
+
+@main def main(): Unit =
+    val t = true
+    var f: Boolean = false
+    print(t)
+    print("\n")
+    print(toStr(f) + " " + toStr(!f) + "\n")
+    print(isEven(4) && !isEven(3))
+    print("\n")
+    print(false && loud(true))
+    print("\n")
+    print(true || loud(true))
+    print("\n")
+    print(t && loud(f))
+    print("\n")
+    val x = 5
+    if x < 0 then
+        print("negative\n")
+    else if x == 0 then
+        print("zero\n")
+    else
+        print("positive\n")
+    if t then print("bez else\n")
+    val r = readBoolean()
+    if r == true || x > 100 then print("nacitane true\n")

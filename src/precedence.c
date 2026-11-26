@@ -1,3 +1,6 @@
+// project: IFJ26 compiler
+// author: Karin Hlavatá <xhlavak00>
+
 #include "precedence.h"
 #include <stdlib.h>
 #include <string.h>
@@ -14,54 +17,55 @@ typedef enum {
     PREC_LPAR, // (
     PREC_RPAR, // )
     PREC_DOLLAR, // anything else (end of input)
-    PREC_DOT, 
+    PREC_DOT,
     PREC_COUNT
 } prec_group_t;
 
-static prec_group_t get_group(t_type type, bool expect_operand) {
+static prec_group_t get_group(t_type type, bool expect_operand)
+{
     switch (type) {
-        case T_MINUS:
-            return expect_operand ? PREC_UNARY : PREC_ADD;
-        case T_NEG:
-            return PREC_UNARY;
-        case T_MULT:
-        case T_DIV:
-            return PREC_MULDIV;
-        case T_PLUS:
-            return PREC_ADD;
-        case T_LT:
-        case T_LOET:
-        case T_GT:
-        case T_GOET:
-            return PREC_REL;
-        case T_ET:
-        case T_NET:
-            return PREC_EQ;
-        case T_AND:
-            return PREC_AND;
-        case T_OR:
-            return PREC_OR;
-        case T_ID:
-        case T_STRING:
-        case T_INT:
-        case T_DOUBLE:
-        case T_UNIT_BRACKETS:
-        case KW_TRUE:
-        case KW_FALSE:
-            return PREC_TERM;
-        case T_LPARENTH:
-            return PREC_LPAR;
-        case T_RPARENTH:
-            return PREC_RPAR;
-        case T_DOT:
-            return PREC_DOT;
-        default:
-            return PREC_DOLLAR;
+    case T_MINUS:
+        return expect_operand ? PREC_UNARY : PREC_ADD;
+    case T_NEG:
+        return PREC_UNARY;
+    case T_MULT:
+    case T_DIV:
+        return PREC_MULDIV;
+    case T_PLUS:
+        return PREC_ADD;
+    case T_LT:
+    case T_LOET:
+    case T_GT:
+    case T_GOET:
+        return PREC_REL;
+    case T_ET:
+    case T_NET:
+        return PREC_EQ;
+    case T_AND:
+        return PREC_AND;
+    case T_OR:
+        return PREC_OR;
+    case T_ID:
+    case T_STRING:
+    case T_INT:
+    case T_DOUBLE:
+    case T_UNIT_BRACKETS:
+    case KW_TRUE:
+    case KW_FALSE:
+        return PREC_TERM;
+    case T_LPARENTH:
+        return PREC_LPAR;
+    case T_RPARENTH:
+        return PREC_RPAR;
+    case T_DOT:
+        return PREC_DOT;
+    default:
+        return PREC_DOLLAR;
     }
 }
 
 typedef enum {
-    ITEM_TERM, 
+    ITEM_TERM,
     ITEM_NONTERM,
     ITEM_MARK
 } item_kind_t;
@@ -69,34 +73,36 @@ typedef enum {
 typedef struct {
     item_kind_t kind;
     prec_group_t group;
-    tree_node_t *node;
+    tree_node_t* node;
 } stack_item_t;
 
 typedef struct {
-    stack_item_t *items;
+    stack_item_t* items;
     size_t count;
     size_t capacity;
 } prec_stack_t;
 
-static bool stack_init(prec_stack_t *s) {
+static bool stack_init(prec_stack_t* s)
+{
     s->capacity = 16;
     s->count = 0;
     s->items = malloc(s->capacity * sizeof(stack_item_t));
     if (!s->items) {
         return false;
     }
-    s->items[0] = (stack_item_t){ITEM_TERM, PREC_DOLLAR, NULL};
+    s->items[0] = (stack_item_t) { ITEM_TERM, PREC_DOLLAR, NULL };
     s->count = 1;
     return true;
 }
 
-static bool stack_push(prec_stack_t *s, stack_item_t item) {
+static bool stack_push(prec_stack_t* s, stack_item_t item)
+{
     if (s->count == s->capacity) {
         size_t new_capacity = s->capacity * 2;
-        stack_item_t *tmp = realloc(s->items, new_capacity * sizeof(stack_item_t));
+        stack_item_t* tmp = realloc(s->items, new_capacity * sizeof(stack_item_t));
         if (!tmp) {
             return false;
-        } 
+        }
         s->items = tmp;
         s->capacity = new_capacity;
     }
@@ -104,7 +110,8 @@ static bool stack_push(prec_stack_t *s, stack_item_t item) {
     return true;
 }
 
-static size_t stack_top_terminal(const prec_stack_t *s) {
+static size_t stack_top_terminal(const prec_stack_t* s)
+{
     size_t i = s->count;
     while (i > 0) {
         i--;
@@ -116,17 +123,19 @@ static size_t stack_top_terminal(const prec_stack_t *s) {
 }
 
 // < - start of handle
-static bool stack_insert_mark(prec_stack_t *s, size_t pos) {
-    if (!stack_push(s, (stack_item_t){ITEM_MARK, PREC_DOLLAR, NULL})) {
+static bool stack_insert_mark(prec_stack_t* s, size_t pos)
+{
+    if (!stack_push(s, (stack_item_t) { ITEM_MARK, PREC_DOLLAR, NULL })) {
         return false;
     }
     size_t move = s->count - 1 - (pos + 1);
     memmove(&s->items[pos + 2], &s->items[pos + 1], move * sizeof(stack_item_t));
-    s->items[pos + 1] = (stack_item_t){ITEM_MARK, PREC_DOLLAR, NULL};
-    return true;   
+    s->items[pos + 1] = (stack_item_t) { ITEM_MARK, PREC_DOLLAR, NULL };
+    return true;
 }
 
-static void stack_free(prec_stack_t *s) {
+static void stack_free(prec_stack_t* s)
+{
     for (size_t i = 0; i < s->count; i++) {
         tree_dispose(&s->items[i].node);
     }
@@ -145,34 +154,37 @@ typedef enum {
 
 static const prec_rel_t prec_table[PREC_COUNT][PREC_COUNT] = {
     // unary muldiv add rel eq and or term lpar rpar dollar dot
-    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // unary
-    {R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // muldiv
-    {R_LT, R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // add
-    {R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // rel
-    {R_LT, R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // eq
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // and
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT}, // or
-    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT}, // term
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_EQ, R_ERR, R_LT}, // lpar
-    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT}, // rpar
-    {R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_ERR, R_ERR, R_LT},  // dollar
-    {R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_ERR, R_GT, R_GT, R_GT}, // dot
+    { R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // unary
+    { R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // muldiv
+    { R_LT, R_LT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // add
+    { R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // rel
+    { R_LT, R_LT, R_LT, R_LT, R_ERR, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // eq
+    { R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // and
+    { R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_GT, R_LT, R_LT, R_GT, R_GT, R_LT }, // or
+    { R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT }, // term
+    { R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_EQ, R_ERR, R_LT }, // lpar
+    { R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_ERR, R_ERR, R_GT, R_GT, R_GT }, // rpar
+    { R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_LT, R_ERR, R_ERR, R_LT }, // dollar
+    { R_ERR, R_GT, R_GT, R_GT, R_GT, R_GT, R_GT, R_LT, R_ERR, R_GT, R_GT, R_GT }, // dot
 };
 
 // sets error code, if no error happened before
-static void set_error(Parser *p, int code) {
+static void set_error(Parser* p, int code)
+{
     if (p->error == PARSE_OK) {
         p->error = code;
     }
 }
 
 // true for groups of binary operators
-static bool is_binary_op(prec_group_t g) {
+static bool is_binary_op(prec_group_t g)
+{
     return g == PREC_MULDIV || g == PREC_ADD || g == PREC_REL || g == PREC_EQ || g == PREC_AND || g == PREC_OR || g == PREC_DOT;
 }
 
 // moves the subtree of a stack item under parent
-static bool attach_item(tree_node_t *parent, stack_item_t *item) {
+static bool attach_item(tree_node_t* parent, stack_item_t* item)
+{
     if (!tree_add_child(parent, item->node)) {
         return false;
     }
@@ -180,11 +192,12 @@ static bool attach_item(tree_node_t *parent, stack_item_t *item) {
     return true;
 }
 
-static bool is_member_name(const tree_node_t *e) {
+static bool is_member_name(const tree_node_t* e)
+{
     if (!e || e->type != NODE_NONTERMINAL || e->rule != RULE_EXPRESSION || e->children_count != 1) {
         return false;
     }
-    const tree_node_t *c = e->children[0];
+    const tree_node_t* c = e->children[0];
     if (c->type == NODE_TERMINAL) {
         return c->token.type == T_ID;
     }
@@ -192,7 +205,8 @@ static bool is_member_name(const tree_node_t *e) {
 }
 
 // reduces the handle on top of the stack to one nonterminal E
-static bool reduce(Parser *p, prec_stack_t *s) {
+static bool reduce(Parser* p, prec_stack_t* s)
+{
     size_t mark = s->count;
     while (mark > 0) {
         mark--;
@@ -205,9 +219,9 @@ static bool reduce(Parser *p, prec_stack_t *s) {
         return false;
     }
 
-    stack_item_t *h = &s->items[mark + 1];
+    stack_item_t* h = &s->items[mark + 1];
     size_t n = s->count - mark - 1;
-    tree_node_t *result = NULL;
+    tree_node_t* result = NULL;
     bool ok = true;
 
     if (n == 1 && h[0].kind == ITEM_TERM && h[0].group == PREC_TERM) {
@@ -221,9 +235,8 @@ static bool reduce(Parser *p, prec_stack_t *s) {
     } else if (n == 3 && h[0].kind == ITEM_NONTERM && h[1].kind == ITEM_TERM && is_binary_op(h[1].group) && h[2].kind == ITEM_NONTERM && (h[1].group != PREC_DOT || is_member_name(h[2].node))) {
         // E -> E op E, E -> E.name
         result = tree_create_nonterminal(RULE_EXPRESSION);
-        ok = result && attach_item(result, &h[0]) && attach_item(result, &h[1]) && attach_item(result, &h[2]); 
-    } else if (n == 3 && h[0].kind == ITEM_TERM && h[0].group == PREC_LPAR && h[1].kind == ITEM_NONTERM &&
-        h[2].kind == ITEM_TERM && h[2].group == PREC_RPAR) {
+        ok = result && attach_item(result, &h[0]) && attach_item(result, &h[1]) && attach_item(result, &h[2]);
+    } else if (n == 3 && h[0].kind == ITEM_TERM && h[0].group == PREC_LPAR && h[1].kind == ITEM_NONTERM && h[2].kind == ITEM_TERM && h[2].group == PREC_RPAR) {
         // E -> (E)
         result = h[1].node;
         h[1].node = NULL;
@@ -240,14 +253,15 @@ static bool reduce(Parser *p, prec_stack_t *s) {
     }
     // replace "< handle" with E
     s->count = mark;
-    s->items[s->count++] = (stack_item_t){ITEM_NONTERM, PREC_DOLLAR, result};
+    s->items[s->count++] = (stack_item_t) { ITEM_NONTERM, PREC_DOLLAR, result };
     return true;
 }
 
 // pushes current input token on stack (as a leaf) and reads the next one
-static bool shift(Parser *p, prec_stack_t *s, prec_group_t group) {
-    tree_node_t *leaf = tree_create_terminal(&p->current);
-    if (!leaf || !stack_push(s, (stack_item_t){ITEM_TERM, group, leaf})) {
+static bool shift(Parser* p, prec_stack_t* s, prec_group_t group)
+{
+    tree_node_t* leaf = tree_create_terminal(&p->current);
+    if (!leaf || !stack_push(s, (stack_item_t) { ITEM_TERM, group, leaf })) {
         tree_dispose(&leaf);
         set_error(p, PARSE_ERR_INTERNAL);
         return false;
@@ -256,8 +270,9 @@ static bool shift(Parser *p, prec_stack_t *s, prec_group_t group) {
 }
 
 // reads the arguments of a call
-static void parse_arg_list(Parser *p, tree_node_t *call) {
-    tree_node_t *args = tree_create_nonterminal(RULE_CALL_ARGS);
+static void parse_arg_list(Parser* p, tree_node_t* call)
+{
+    tree_node_t* args = tree_create_nonterminal(RULE_CALL_ARGS);
     if (!args || !tree_add_child(call, args)) {
         tree_dispose(&args);
         set_error(p, PARSE_ERR_INTERNAL);
@@ -283,9 +298,10 @@ static void parse_arg_list(Parser *p, tree_node_t *call) {
 }
 
 // second half of shift_id - identifier lead is already read
-static bool push_id_or_call(Parser *p, prec_stack_t *s, tree_node_t *node) {
+static bool push_id_or_call(Parser* p, prec_stack_t* s, tree_node_t* node)
+{
     if (parser_check(p, T_LPARENTH) || parser_check(p, T_UNIT_BRACKETS)) {
-        tree_node_t *call = tree_create_nonterminal(RULE_EXPRESSION_AFTER_ID);
+        tree_node_t* call = tree_create_nonterminal(RULE_EXPRESSION_AFTER_ID);
         if (!call || !tree_add_child(call, node)) {
             tree_dispose(&node);
             tree_dispose(&call);
@@ -301,7 +317,7 @@ static bool push_id_or_call(Parser *p, prec_stack_t *s, tree_node_t *node) {
             return false;
         }
     }
-    if (!stack_push(s, (stack_item_t){ITEM_TERM, PREC_TERM, node})) {
+    if (!stack_push(s, (stack_item_t) { ITEM_TERM, PREC_TERM, node })) {
         tree_dispose(&node);
         set_error(p, PARSE_ERR_INTERNAL);
         return false;
@@ -310,8 +326,9 @@ static bool push_id_or_call(Parser *p, prec_stack_t *s, tree_node_t *node) {
 }
 
 // pushes an identifier on the stack. if "(" follows, it is a function call -> reads all its arguments and pushes call as one term
-static bool shift_id(Parser *p, prec_stack_t *s) {
-    tree_node_t *node = tree_create_terminal(&p->current);
+static bool shift_id(Parser* p, prec_stack_t* s)
+{
+    tree_node_t* node = tree_create_terminal(&p->current);
     if (!node) {
         set_error(p, PARSE_ERR_INTERNAL);
         return false;
@@ -323,7 +340,8 @@ static bool shift_id(Parser *p, prec_stack_t *s) {
     return push_id_or_call(p, s, node);
 }
 
-static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_lpar, tree_node_t *first_term) {
+static void parse_expression(Parser* p, tree_node_t* parent, tree_node_t* first_lpar, tree_node_t* first_term)
+{
     if (p->error != PARSE_OK) {
         tree_dispose(&first_lpar);
         tree_dispose(&first_term);
@@ -342,7 +360,7 @@ static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_
     int paren_depth = 0;
 
     if (first_lpar) {
-        if (stack_insert_mark(&s, stack_top_terminal(&s)) && stack_push(&s, (stack_item_t){ITEM_TERM, PREC_LPAR, first_lpar})) {
+        if (stack_insert_mark(&s, stack_top_terminal(&s)) && stack_push(&s, (stack_item_t) { ITEM_TERM, PREC_LPAR, first_lpar })) {
             paren_depth = 1;
         } else {
             tree_dispose(&first_lpar);
@@ -359,7 +377,7 @@ static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_
         } else if (first_term->token.type == T_ID) {
             ok = push_id_or_call(p, &s, first_term);
         } else {
-            ok = stack_push(&s, (stack_item_t){ITEM_TERM, PREC_TERM, first_term});
+            ok = stack_push(&s, (stack_item_t) { ITEM_TERM, PREC_TERM, first_term });
             if (!ok) {
                 tree_dispose(&first_term);
                 set_error(p, PARSE_ERR_INTERNAL);
@@ -429,16 +447,19 @@ static void parse_expression(Parser *p, tree_node_t *parent, tree_node_t *first_
     stack_free(&s);
 }
 
-void rule_expression(Parser *p, tree_node_t * parent) {
+void rule_expression(Parser* p, tree_node_t* parent)
+{
     parse_expression(p, parent, NULL, NULL);
 }
-void rule_expression_after_id(Parser *p, tree_node_t *parent, tree_node_t *id_leaf) {
+void rule_expression_after_id(Parser* p, tree_node_t* parent, tree_node_t* id_leaf)
+{
     parse_expression(p, parent, NULL, id_leaf);
 }
 
 // creates a nonterminal and attaches it to parent
-static tree_node_t *new_child(Parser *p, tree_node_t *parent, tree_rule_t rule) {
-    tree_node_t *node = tree_create_nonterminal(rule);
+static tree_node_t* new_child(Parser* p, tree_node_t* parent, tree_rule_t rule)
+{
+    tree_node_t* node = tree_create_nonterminal(rule);
     if (!node || !tree_add_child(parent, node)) {
         tree_dispose(&node);
         set_error(p, PARSE_ERR_INTERNAL);
@@ -448,7 +469,8 @@ static tree_node_t *new_child(Parser *p, tree_node_t *parent, tree_rule_t rule) 
 }
 
 // attaches a leaf to parent, frees it on failure
-static bool add_leaf(Parser *p, tree_node_t *parent, tree_node_t *leaf) {
+static bool add_leaf(Parser* p, tree_node_t* parent, tree_node_t* leaf)
+{
     if (!tree_add_child(parent, leaf)) {
         tree_dispose(&leaf);
         set_error(p, PARSE_ERR_INTERNAL);
@@ -458,8 +480,9 @@ static bool add_leaf(Parser *p, tree_node_t *parent, tree_node_t *leaf) {
 }
 
 // makes a leaf from the current token and moves to the next one
-static tree_node_t *take_leaf(Parser *p) {
-    tree_node_t *leaf = tree_create_terminal(&p->current);
+static tree_node_t* take_leaf(Parser* p)
+{
+    tree_node_t* leaf = tree_create_terminal(&p->current);
     if (!leaf) {
         set_error(p, PARSE_ERR_INTERNAL);
         return NULL;
@@ -472,19 +495,25 @@ static tree_node_t *take_leaf(Parser *p) {
 }
 
 // LAMBDA_ARROW := '=>' RHS (rule 65)
-static void parse_lambda_arrow(Parser *p, tree_node_t *parent) {
-    if (p->error != PARSE_OK) return;
-    tree_node_t *node = new_child(p, parent, RULE_LAMBDA_ARROW);
-    if (!node) return;
+static void parse_lambda_arrow(Parser* p, tree_node_t* parent)
+{
+    if (p->error != PARSE_OK)
+        return;
+    tree_node_t* node = new_child(p, parent, RULE_LAMBDA_ARROW);
+    if (!node)
+        return;
     parser_expect(p, T_LAMB, node);
     rule_rhs(p, node);
 }
 
 // LAMBDA_AFTER_ID := ':' TYPE PARAM_LIST_REST ')' LAMBDA_ARROW (rule 64)
-static void parse_lambda_after_id(Parser *p, tree_node_t *parent) {
-    if (p->error != PARSE_OK) return;
-    tree_node_t *node = new_child(p, parent, RULE_LAMBDA_AFTER_ID);
-    if (!node) return;
+static void parse_lambda_after_id(Parser* p, tree_node_t* parent)
+{
+    if (p->error != PARSE_OK)
+        return;
+    tree_node_t* node = new_child(p, parent, RULE_LAMBDA_AFTER_ID);
+    if (!node)
+        return;
     parser_expect(p, T_COL, node);
     rule_type(p, node);
     rule_param_list_rest(p, node);
@@ -492,18 +521,21 @@ static void parse_lambda_after_id(Parser *p, tree_node_t *parent) {
     parse_lambda_arrow(p, node);
 }
 
-void rule_value_expression(Parser *p, tree_node_t *parent) {
-    if (p->error != PARSE_OK) return;
+void rule_value_expression(Parser* p, tree_node_t* parent)
+{
+    if (p->error != PARSE_OK)
+        return;
 
     // "() => body", or just the Unit value "()"
     if (parser_check(p, T_UNIT_BRACKETS)) {
-        tree_node_t *unit = take_leaf(p);
-        if (!unit) return;
+        tree_node_t* unit = take_leaf(p);
+        if (!unit)
+            return;
         if (!parser_check(p, T_LAMB)) {
             parse_expression(p, parent, NULL, unit);
             return;
         }
-        tree_node_t *lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
+        tree_node_t* lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
         if (!lambda) {
             tree_dispose(&unit);
             return;
@@ -516,13 +548,14 @@ void rule_value_expression(Parser *p, tree_node_t *parent) {
 
     // "(identif: Type, ...) => body", or an expression starting with "("
     if (parser_check(p, T_LPARENTH)) {
-        tree_node_t *lpar = take_leaf(p);
-        if (!lpar) return;
+        tree_node_t* lpar = take_leaf(p);
+        if (!lpar)
+            return;
         if (!parser_check(p, T_ID)) {
             parse_expression(p, parent, lpar, NULL);
             return;
         }
-        tree_node_t *id = take_leaf(p);
+        tree_node_t* id = take_leaf(p);
         if (!id) {
             tree_dispose(&lpar);
             return;
@@ -532,7 +565,7 @@ void rule_value_expression(Parser *p, tree_node_t *parent) {
             return;
         }
         // "(" identif ":" -> it is a lambda
-        tree_node_t *lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
+        tree_node_t* lambda = new_child(p, parent, RULE_VALUE_EXPRESSION);
         if (!lambda) {
             tree_dispose(&lpar);
             tree_dispose(&id);
