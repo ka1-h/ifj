@@ -1,6 +1,8 @@
 // project: IFJ26 compiler
 // author: Daniel Čerešňa <xceresd00>
 
+// This file is inspired by last years implementation of the same tree by the same author.
+
 #include "tree.h"
 
 #include <stdlib.h>
