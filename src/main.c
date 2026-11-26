@@ -1,5 +1,5 @@
 // project: IFJ26 compiler
-// author: Branislav Krátky <xkratkb00>
+// authors: Branislav Krátky <xkratkb00>, Daniel Čerešňa <xceresd00>, Karin Hlavatá <xhlavak00>, Klára Luskačová <xluskak00>
 
 #include "generator.h"
 #include "scanner.h"
