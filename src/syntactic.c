@@ -25,6 +25,11 @@ tree_node_t* handle_tokens(Parser* p)
     return rule_program(p);
 }
 
+// The following functions starting with "rule" all call each other recursively and are
+// based on the GR.txt file (The LL(1) Grammar Rules). Every function checks the correct syntax
+// and creates a part of the tree accordingly. The functions starting with "first"
+// represent the set of the first tokens that apply to that rule.
+
 tree_node_t* rule_program(Parser* p)
 {
     tree_node_t* node = tree_create_nonterminal(RULE_PROGRAM);
@@ -717,6 +722,11 @@ void rule_id_statement(Parser* p, tree_node_t* parent)
     rule_match_suffix(p, node);
 }
 
+// The skeleton of these functions was written by AI (Claude Code, Opus 5.5)
+// based on the first part written by the author.
+// Prompt: "Napis zvysne funkcie pre syntakticke pravidla podla tych, ktore su uz napisane (bez stromu atd..)"
+// The AI also received the file containing grammar rules.
+
 void rule_return_statement(Parser* p, tree_node_t* parent)
 {
     if (p->error != PARSE_OK)
@@ -1193,7 +1203,7 @@ void rule_literal_pattern(Parser* p, tree_node_t* parent)
 
     node = add_node(p, parent, RULE_LITERAL_PATTERN_6);
     if (node)
-        parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' chodi zo scannera ako jeden token
+        parser_expect(p, T_UNIT_BRACKETS, node); // '(' ')' is passed as one token from the scanner
 }
 
 void rule_number(Parser* p, tree_node_t* parent)
